@@ -267,7 +267,7 @@ describe("POST /setup/apply, asked for JSON", () => {
     expect(closed.status).toBe(409);
   });
 
-  it("reports a failed step with 502, and a second run finishes the job", async () => {
+  it("reports a failed step with 422 (never 502), and a second run finishes the job", async () => {
     const world = createWorld();
     world.cloudflare.failOn({
       method: "POST",
@@ -276,7 +276,7 @@ describe("POST /setup/apply, asked for JSON", () => {
       times: 1,
     });
     const first = await apply(world);
-    expect(first.status).toBe(502);
+    expect(first.status).toBe(422);
     const got = await body(first);
     expect(got["ok"]).toBe(false);
     const steps = got["steps"] as { status: string; note?: string }[];
@@ -298,7 +298,7 @@ describe("POST /setup/apply, asked for JSON", () => {
       message: "invalid Authorization: Bearer " + GOOD_TOKEN,
     });
     const res = await apply(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     expect(await res.clone().text()).toContain("[removed]");
     expectNoSecret(world, [await text(res)]);
   });
@@ -308,12 +308,12 @@ describe("POST /setup/apply, asked for JSON", () => {
       cloudflare: { token: "cloudflare-knows-a-different-token-00001" },
     });
     const one = await apply(refused);
-    expect(one.status).toBe(502);
+    expect(one.status).toBe(422);
     expectNoSecret(refused, [await text(one)]);
 
     const world = createWorld();
     const two = await apply(world, { cf_token: "short" });
-    expect(two.status).toBe(502);
+    expect(two.status).toBe(422);
     const steps = (await body(two))["steps"] as { note?: string }[];
     expect(steps[0]?.note).toMatch(/does not look like a Cloudflare API token/);
     expectNoSecret(world, [await text(two)]);
@@ -345,7 +345,7 @@ describe("POST /setup/apply, asked for JSON", () => {
   it("names an account with no Zero Trust team, before anything is created", async () => {
     const world = createWorld({ cloudflare: { organization: null } });
     const res = await apply(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     const got = await body(res);
     const steps = got["steps"] as {
       id: string;

@@ -21,7 +21,7 @@ export const GOOD_TOKEN = [
 ].join("-");
 
 type Obj = Record<string, unknown>;
-export type Area = "apps" | "organization" | "dns";
+export type Area = "apps" | "organization" | "dns" | "zone";
 
 export type Recorded = {
   readonly method: string;
@@ -60,6 +60,11 @@ export type FakeOptions = {
    * on the account route. Default: "user" (active on the user route).
    */
   readonly tokenOwner?: "user" | "account" | "account-disabled";
+  /**
+   * A token without Zone Read: the zone list answers, but empty. (Denying
+   * "zone" instead makes it answer 403.)
+   */
+  readonly zoneListEmpty?: boolean;
 };
 
 export type FakeCloudflare = {
@@ -96,6 +101,7 @@ function areaOf(path: string): Area | null {
   if (/\/access\/(organizations|identity_providers)/.test(path))
     return "organization";
   if (/\/dns_records/.test(path)) return "dns";
+  if (path === "/zones") return "zone";
   return null;
 }
 
@@ -186,6 +192,7 @@ export function createFakeCloudflare(
             status: owner === "account" ? "active" : "disabled",
           });
     if (path === "/zones") {
+      if (options.zoneListEmpty) return ok([]);
       const name = url.searchParams.get("name");
       return ok(name ? zones.filter((z) => z["name"] === name) : zones);
     }

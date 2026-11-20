@@ -30,7 +30,7 @@ describe("GET /setup in setup mode", () => {
       "Access: Organizations, Identity Providers, and Groups",
     );
     expect(html).toContain("DNS");
-    expect(html).toMatch(/end date to tomorrow/);
+    expect(html).toMatch(/Expiration:.*Custom/);
     expect(html).toMatch(/not saved anywhere/);
     // No script, no inline style, no inline event handler: the CSP allows none.
     expect(html).not.toMatch(/<script/i);
@@ -84,7 +84,7 @@ describe("GET /setup in setup mode", () => {
     expect(html).not.toContain('name="origin"');
   });
 
-  it("links to Cloudflare's token screen with the three permissions filled in", async () => {
+  it("links to Cloudflare's token screen with the four permissions filled in", async () => {
     const world = createWorld();
     const html = await (await world.get()).text();
     expect(html).toContain(
@@ -93,7 +93,7 @@ describe("GET /setup in setup mode", () => {
     expect(html).toContain('rel="noopener noreferrer"');
     // What the link cannot set is still asked for in words.
     expect(html).toMatch(/Specific zone/);
-    expect(html).toMatch(/only your own account/);
+    expect(html).toMatch(/narrow it to your one account/);
   });
 
   it("starts the hostname box with the one the applied config names", async () => {
@@ -622,7 +622,7 @@ describe("POST /setup/apply", () => {
       "has a space in it 0123456789 0123456789",
     ]) {
       const res = await applyWith(world, { cf_token });
-      expect(res.status).toBe(502);
+      expect(res.status).toBe(422);
       expect(await res.text()).toMatch(
         /does not look like a Cloudflare API token/,
       );
@@ -641,7 +641,7 @@ describe("POST /setup/apply", () => {
       times: 1,
     });
     const res = await applyWith(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     const html = await res.text();
     expect(html).toContain("Setup stopped");
     expect(html).toMatch(
@@ -669,7 +669,7 @@ describe("POST /setup/apply", () => {
   it("names the permission a token is missing", async () => {
     const world = createWorld({ cloudflare: { denied: ["organization"] } });
     const res = await applyWith(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     expect(await res.text()).toContain(
       "Access: Organizations, Identity Providers, and Groups",
     );
@@ -680,7 +680,7 @@ describe("POST /setup/apply", () => {
   it("tells the person what to do when Zero Trust was never opened", async () => {
     const world = createWorld({ cloudflare: { organization: null } });
     const res = await applyWith(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     expect(await res.text()).toMatch(/open Zero Trust once, pick a team name/);
     expect(world.db.row.setup_state).toBe("open");
   });
@@ -688,7 +688,7 @@ describe("POST /setup/apply", () => {
   it("reports it when the database refuses the code at the last step", async () => {
     const world = createWorld({ deps: { complete: async () => false } });
     const res = await applyWith(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     expect(await res.text()).toMatch(
       /did not accept the setup code at the last step/,
     );
@@ -704,7 +704,7 @@ describe("POST /setup/apply", () => {
       },
     });
     const res = await applyWith(world);
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     const html = await res.text();
     expect(html).toMatch(/could not store the result/);
     expect(html).not.toContain("hunter2");

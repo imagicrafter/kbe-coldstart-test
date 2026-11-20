@@ -107,6 +107,8 @@ function formView(
     originUnusable: fixed.origin !== null && origin === null,
     reopened,
     claimed,
+    // A claimed session has proven the first-run code: it may see the owner.
+    knownOwner: claimed ? fixed.owner : null,
   };
 }
 
@@ -204,6 +206,21 @@ function previewRoute(use: () => SetupDeps) {
       ? json(c, 200, previewBody(plan, signed))
       : page(c, 200, previewPage(plan, signed, [], version, !claimed));
   };
+}
+
+/** A failed apply. 4xx, so the hosting edge passes the page through. */
+const APPLY_FAILED = 422;
+
+/** The failed steps' notes, codes and details, for the log. */
+function failedSteps(report: ApplyReport) {
+  return report.steps
+    .filter((s) => s.status === "failed")
+    .map((s) => ({
+      id: s.id,
+      ...(s.code ? { code: s.code } : {}),
+      ...(s.note ? { note: s.note } : {}),
+      ...(s.details ? { details: s.details } : {}),
+    }));
 }
 
 /** True while an apply is running in this process. */
@@ -388,10 +405,14 @@ function applyRoute(use: () => SetupDeps) {
           access_level: plan.level,
           ok,
           steps: report.steps.map((s) => `${s.id}:${s.status}`),
+          // Which check failed and what Cloudflare said. Never the token.
+          failed: failedSteps(report),
         },
         "setup: apply finished",
       );
-      const status = ok ? 200 : 502;
+      // Not 502: DigitalOcean's edge answers a 502 from the app with its own
+      // "failed to forward" page, so the person never saw this report.
+      const status = ok ? 200 : APPLY_FAILED;
       return wantsJson(c)
         ? json(c, status, resultBody(report, ok, plan.connectorUrl))
         : page(
@@ -399,6 +420,17 @@ function applyRoute(use: () => SetupDeps) {
             status,
             resultPage(report, ok, plan.connectorUrl, setupAssetVersion()),
           );
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err.name : "unknown" },
+        "setup: apply could not finish",
+      );
+      return message(
+        c,
+        APPLY_FAILED,
+        "Setup stopped",
+        "Something went wrong while applying. Look at the setup page again: finished steps are not repeated when you run it again.",
+      );
     } finally {
       applying = false;
     }
@@ -415,5 +447,10 @@ export function makeSetupRoutes(deps: SetupDeps | (() => SetupDeps)): Hono {
   routes.get("/", getRoute(use));
   routes.post("/preview", previewRoute(use));
   routes.post("/apply", applyRoute(use));
+  // Opened directly (a bookmark, a reload, the back button): the preview and
+  // the apply step are answers to a form, so start over at the form.
+  const startOver = (c: Context) => c.redirect("/setup", 303);
+  routes.get("/preview", startOver);
+  routes.get("/apply", startOver);
   return routes;
 }

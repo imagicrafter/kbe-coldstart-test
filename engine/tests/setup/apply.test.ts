@@ -544,7 +544,7 @@ describe("apply: the token", () => {
       tick_app: "not_run",
     });
     expect(noteOf(report, "engine_policy")).toMatch(
-      /needs: Account - Access: Apps and Policies - Edit/,
+      /needs: Account - Access: Apps and Policies - Write/,
     );
     expect(report.access).toBeNull();
   });

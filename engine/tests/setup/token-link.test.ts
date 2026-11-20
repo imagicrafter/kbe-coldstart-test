@@ -29,12 +29,13 @@ describe("the Cloudflare token link", () => {
     expect(url.searchParams.get("name")).toBe(TOKEN_LINK_NAME);
   });
 
-  it("asks for one key per permission the setup needs, each at edit", () => {
+  it("asks for one key per permission the setup needs: edit, and zone at read", () => {
     const keys = JSON.parse(url.searchParams.get("permissionGroupKeys") ?? "");
     expect(keys).toEqual([
       { key: "access", type: "edit" },
       { key: "access_acct", type: "edit" },
       { key: "dns", type: "edit" },
+      { key: "zone", type: "read" },
     ]);
     expect(Object.keys(TOKEN_LINK_KEYS).sort()).toEqual(
       TOKEN_PERMISSIONS.map((p) => p.id).sort(),

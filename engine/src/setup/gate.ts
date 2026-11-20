@@ -50,7 +50,7 @@ export type SetupDeps = {
   readonly now: () => number;
 };
 
-export type Status = 200 | 400 | 401 | 403 | 409 | 415 | 429 | 502 | 503;
+export type Status = 200 | 400 | 401 | 403 | 409 | 415 | 422 | 429 | 502 | 503;
 
 function headers(c: Context): void {
   c.header("Content-Security-Policy", SETUP_CSP);

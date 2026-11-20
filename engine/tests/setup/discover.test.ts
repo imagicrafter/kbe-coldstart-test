@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createCloudflareClient } from "../../src/setup/cloudflare-client.js";
-import { discover } from "../../src/setup/discover.js";
+import { discover, SetupStepError } from "../../src/setup/discover.js";
 import {
   createFakeCloudflare,
   GOOD_TOKEN,
@@ -41,5 +41,58 @@ describe("token verification (as seen on a live account)", () => {
   it("a token the account route calls disabled is refused", async () => {
     const { found } = run({ tokenOwner: "account-disabled" });
     await expect(found).rejects.toThrow(/did not accept this token/);
+  });
+});
+
+/** The error discover() threw, for a closer look. */
+async function failure(options: FakeOptions): Promise<SetupStepError> {
+  const { found } = run(options);
+  const err = await found.then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(err).toBeInstanceOf(SetupStepError);
+  return err as SetupStepError;
+}
+
+describe("which check failed, in words and in the details", () => {
+  it("a token that cannot list zones names Zone Read (empty list)", async () => {
+    const err = await failure({ zoneListEmpty: true });
+    expect(err.message).toMatch(/Zone - Zone - Read/);
+    expect(err.code).toBe("zone_not_found");
+    expect(err.details.join("\n")).toMatch(/zones\?name=example\.com: no match/);
+  });
+
+  it("a token that is refused the zone list names Zone Read, with Cloudflare's code", async () => {
+    const err = await failure({ denied: ["zone"] });
+    expect(err.message).toMatch(/Zone - Zone - Read/);
+    expect(err.details.join("\n")).toMatch(/403.*10000/);
+  });
+
+  it("a token neither verify route accepts lists both routes' answers", async () => {
+    const err = await failure({ tokenOwner: "account-disabled" });
+    expect(err.code).toBe("token_inactive");
+    const details = err.details.join("\n");
+    expect(details).toMatch(/user\/tokens\/verify: 401 \[1000\]/);
+    expect(details).toMatch(/accounts\/\.\.\.\/tokens\/verify: status disabled/);
+  });
+
+  it("a missing permission names the area and the refused check", async () => {
+    const err = await failure({ denied: ["organization"] });
+    expect(err.code).toBe("missing_permission");
+    expect(err.message).toMatch(/Access: Organizations/);
+    expect(err.details.join("\n")).toMatch(/organizations: 403 \[10000\]/);
+  });
+
+  it("never puts the token in a message or a detail", async () => {
+    for (const options of [
+      { zoneListEmpty: true },
+      { denied: ["zone" as const] },
+      { tokenOwner: "account-disabled" as const },
+      { denied: ["apps" as const] },
+    ]) {
+      const err = await failure(options);
+      expect(err.message + err.details.join("")).not.toContain(GOOD_TOKEN);
+    }
   });
 });

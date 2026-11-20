@@ -221,21 +221,34 @@ runs at a time.
 
 ### Permissions
 
-The token needs exactly these three permissions. `kbe access setup` prints,
-and the setup page shows, a link that opens Cloudflare's "create token"
-screen with them filled in:
+The token needs exactly these four permissions. `kbe access setup` prints,
+and the setup page shows (on the form and again next to the token box), a
+link that opens Cloudflare's "create token" screen with them filled in.
+Cloudflare's current screen groups them into **Policies** cards ("Account
+policy", "Zone policy") and calls the level **Write**; older screens said
+Edit:
 
-| Type | Permission | Level | Used for |
+| Card | Permission | Level | Used for |
 |---|---|---|---|
-| Account | Access: Apps and Policies | Edit | The two Access applications and their rules |
-| Account | Access: Organizations, Identity Providers, and Groups | Edit | Reading the team name, adding one-time PIN sign-in, switching on the second factor |
-| Zone | DNS | Edit | The one DNS record, in the one zone |
+| Account policy | Access: Apps and Policies | Write | The two Access applications and their rules |
+| Account policy | Access: Organizations, Identity Providers, and Groups | Write | Reading the team name, adding one-time PIN sign-in, switching on the second factor |
+| Zone policy | DNS | Write | The one DNS record, in the one zone |
+| Zone policy | Zone | Read | Finding the zone the hostname is on: `GET /zones` accepts only Zone Read, so without it the zone list comes back empty or refused |
 
 The link cannot set the next three. Set them on that screen:
 
-- **Account resources:** your own account only.
-- **Zone resources:** the one zone your hostname is on.
-- **TTL:** end date tomorrow.
+- **Account policy card:** click the pencil and narrow it to your one account.
+- **Zone policy card:** click the pencil, pick **Specific zone**, and pick the
+  domain your hostname is on.
+- **Expiration:** Custom (or 7 days).
+
+When the token check fails, the setup page and the app log say which check
+failed (the verify routes' answers, `zones?name=...: no match`, or the
+refused Access/DNS read) with Cloudflare's status and error codes. The token
+itself is never logged or shown. Tokens in Cloudflare's newer formats
+(`cfut_` for a user token, verified on `/user/tokens/verify`; `cfat_` for an
+account token, verified on `/accounts/{id}/tokens/verify`) and the older
+unprefixed form are all accepted.
 
 Then delete the token when setup is done.
 
@@ -243,14 +256,14 @@ About the link. Cloudflare documents it as an
 [API token template URL](https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/).
 What that page gives is all the link uses: the user-token address
 `https://dash.cloudflare.com/profile/api-tokens`, `permissionGroupKeys` (the
-keys `access`, `access_acct` and `dns`, each at `edit`), `accountId=*`,
+keys `access`, `access_acct` and `dns` at `edit`, and `zone` at `read`), `accountId=*`,
 `zoneId=all` and a `name`. The page documents no way to limit the token to
 one zone or one account from the link, and no parameter for the end date.
 It also says a key Cloudflare does not know is dropped without a message.
-So the three permissions are always listed in words next to the link, for
+So the four permissions are always listed in words next to the link, for
 the owner to check, and setup itself checks the token before it changes
-anything. If the link opens an empty screen, pick "Create Custom Token" and
-add the three by hand.
+anything. If the link opens an empty screen, create a custom token and
+add the four by hand.
 
 A token with more than this still works; the page warns when the token can
 reach more than one zone.
@@ -481,7 +494,7 @@ section has always used, so older notes still point at the right item.
 17. Permission names in the dashboard: "Access: Apps and Policies",
     "Access: Organizations, Identity Providers, and Groups", Zone "DNS", each
     at level "Edit" (the API calls the same level "Write").
-18. That these three permissions are enough for every call above, in
+18. That these four permissions are enough for every call above, in
     particular the identity-provider calls and the organization `PUT`. The
     token used for the live run was broader.
 19. The hosting platform routes requests for the custom hostname to the app

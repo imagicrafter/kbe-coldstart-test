@@ -134,7 +134,7 @@ def _say_link(ctx: Context, choices: access_choices.Choices, src) -> None:
     ctx.out("")
     ctx.out(_ZERO_TRUST_FIRST)
     ctx.out("Make the one-time Cloudflare token now (the app is deploying meanwhile):")
-    ctx.out("  1. Open this link. It fills in the three permissions:")
+    ctx.out("  1. Open this link. It fills in the four permissions:")
     ctx.out(f"     {cloudflare_token_link.link()}")
     ctx.out("  2. The link cannot set these, so set them on that screen:")
     for line in cloudflare_token_link.BY_HAND:
@@ -144,7 +144,7 @@ def _say_link(ctx: Context, choices: access_choices.Choices, src) -> None:
         ctx.out(f"       - {line}")
     where = ("copy the token" if src.is_clipboard
              else f"save the token in {src.name}, a new file only you can read")
-    ctx.out(f"  3. Click Continue to summary, then Create Token, and {where}.")
+    ctx.out(f"  3. Click Continue to summary (or Create Token), and {where}.")
     ctx.out("Do not paste the token anywhere else. This command picks it up by itself.")
     ctx.out("")
 

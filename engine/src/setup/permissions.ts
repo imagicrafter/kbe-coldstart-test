@@ -5,11 +5,12 @@
  */
 
 export type TokenPermission = {
-  readonly id: "apps" | "organization" | "dns";
-  /** Where it is picked in Cloudflare's "Create Custom Token" form. */
+  readonly id: "apps" | "organization" | "dns" | "zone";
+  /** Which policy card it goes on in Cloudflare's token screen. */
   readonly scope: "Account" | "Zone";
   readonly name: string;
-  readonly level: "Edit";
+  /** Cloudflare's current token screen says "Write"; older screens said "Edit". */
+  readonly level: "Write" | "Read";
   readonly why: string;
 };
 
@@ -18,22 +19,29 @@ export const TOKEN_PERMISSIONS: readonly TokenPermission[] = [
     id: "apps",
     scope: "Account",
     name: "Access: Apps and Policies",
-    level: "Edit",
+    level: "Write",
     why: "creates the two sign-in applications and their rules",
   },
   {
     id: "organization",
     scope: "Account",
     name: "Access: Organizations, Identity Providers, and Groups",
-    level: "Edit",
+    level: "Write",
     why: "reads your team name, adds one-time PIN sign-in, and switches on the second factor",
   },
   {
     id: "dns",
     scope: "Zone",
     name: "DNS",
-    level: "Edit",
+    level: "Write",
     why: "adds the DNS record for the hostname, in that one zone only",
+  },
+  {
+    id: "zone",
+    scope: "Zone",
+    name: "Zone",
+    level: "Read",
+    why: "finds the zone your hostname is on: Cloudflare lists zones only to a token with this",
   },
 ];
 

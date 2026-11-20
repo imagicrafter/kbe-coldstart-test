@@ -28,7 +28,14 @@ import { MgmtError, type Mgmt } from "./mgmt.js";
  */
 
 export type StepStatus = "done" | "unchanged" | "warning" | "failed" | "not_run";
-export type StepReport = { readonly id: string; readonly title: string; readonly status: StepStatus; readonly note?: string };
+export type StepReport = {
+  readonly id: string;
+  readonly title: string;
+  readonly status: StepStatus;
+  readonly note?: string;
+  /** How long the step took, for the log. */
+  readonly ms?: number;
+};
 
 export const DB_STEPS: ReadonlyArray<{ readonly id: string; readonly title: string }> = [
   { id: "project", title: "Check the Supabase project" },
@@ -53,6 +60,8 @@ export type DbSetupInputs = {
   readonly anonKey: string;
   readonly kbSchema: string;
   readonly files: SqlFiles;
+  /** The clock for step timings. Default Date.now. */
+  readonly now?: () => number;
 };
 
 export type SqlFiles = {
@@ -244,6 +253,7 @@ export async function runDbSetup(inputs: DbSetupInputs): Promise<{ readonly ok: 
       steps: [{ id: "project", title: "Check the Supabase project", status: "failed", note: `This screen sets up the default schema only. For KB_SCHEMA=${inputs.kbSchema} use \`kbe db migrate\`.` }],
     };
   }
+  const now = inputs.now ?? Date.now;
   const steps: StepReport[] = [];
   let failed = false;
   for (const def of DB_STEPS) {
@@ -252,13 +262,14 @@ export async function runDbSetup(inputs: DbSetupInputs): Promise<{ readonly ok: 
       continue;
     }
     const run = RUNNERS[def.id];
+    const started = now();
     try {
       const out = run ? await run(inputs) : { status: "failed" as const, note: "unknown step" };
-      steps.push({ ...def, ...out });
+      steps.push({ ...def, ...out, ms: now() - started });
       failed = out.status === "failed";
     } catch (err) {
       const note = err instanceof MgmtError ? err.message : "This step failed unexpectedly.";
-      steps.push({ ...def, status: "failed", note });
+      steps.push({ ...def, status: "failed", note, ms: now() - started });
       failed = true;
     }
   }

@@ -61,6 +61,29 @@ export function errorList(errors: readonly string[]): string {
   return `<div class="card errors" role="alert"><ul>${items}</ul></div>`;
 }
 
+/** What the link cannot set: narrowing the two cards and the expiry. */
+function narrowingSteps(): string {
+  return `<li>The link cannot set these, so set them on that screen:
+<ul>
+<li><strong>Account policy</strong> card: click the pencil and narrow it to your one account.</li>
+<li><strong>Zone policy</strong> card: click the pencil, pick <strong>Specific zone</strong>, and pick the domain your hostname is on.</li>
+<li><strong>Expiration:</strong> pick <strong>Custom</strong> (or 7 days), so the token stops working by itself.</li>
+</ul></li>`;
+}
+
+/** The short version, next to the token box on the apply step. */
+export function tokenShortHelp(): string {
+  const perms = TOKEN_PERMISSIONS.map(
+    (p) =>
+      `<li>${esc(p.scope)} policy: ${esc(p.name)} - <strong>${esc(p.level)}</strong></li>`,
+  ).join("");
+  return `<div class="hint">
+<p><a href="${esc(tokenLink())}" target="_blank" rel="noopener noreferrer">Open Cloudflare's token screen</a> with the permissions filled in. Check its Policies cards list:</p>
+<ul>${perms}</ul>
+<ol>${narrowingSteps()}<li>Create the token, copy it, and paste it here.</li></ol>
+</div>`;
+}
+
 /** How to make the one-time Cloudflare token. Shown above the form. */
 export function tokenInstructions(): string {
   const rows = TOKEN_PERMISSIONS.map(
@@ -72,18 +95,13 @@ export function tokenInstructions(): string {
 <p>This page sets up Cloudflare sign-in for you. To do that it needs a Cloudflare API token, <strong>once</strong>. You paste it in at the last step. It is used for that one request and is not saved anywhere.</p>
 <ol>
 <li><a href="${esc(tokenLink())}" target="_blank" rel="noopener noreferrer">Open Cloudflare's token screen with the permissions filled in</a>. Sign in to Cloudflare if it asks.</li>
-<li>Check that it lists exactly these three permissions:
+<li>Check that the <strong>Policies</strong> cards list exactly these ${TOKEN_PERMISSIONS.length} permissions (the screen says <strong>Write</strong>; older screens say Edit):
 <table>
-<thead><tr><th>Type</th><th>Permission</th><th>Level</th><th>Why</th></tr></thead>
+<thead><tr><th>Card</th><th>Permission</th><th>Level</th><th>Why</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
-<span class="hint">If one is missing, or the link opens an empty screen, add them by hand: <strong>My Profile</strong>, then <strong>API Tokens</strong>, then <strong>Create Token</strong>, then <strong>Create Custom Token</strong>.</span></li>
-<li>The link cannot set these three, so set them on that screen:
-<ul>
-<li><strong>Account Resources:</strong> include only your own account.</li>
-<li><strong>Zone Resources:</strong> include <strong>Specific zone</strong>, and pick the domain your hostname is on.</li>
-<li><strong>TTL:</strong> set the end date to tomorrow, so the token stops working by itself.</li>
-</ul></li>
+<span class="hint">If one is missing, or the link opens an empty screen, add it by hand on the matching card (Account policy or Zone policy). Without <strong>Zone - Read</strong> Cloudflare will not tell setup which zone your hostname is on.</span></li>
+${narrowingSteps()}
 <li>Create the token and copy it. When setup is done, delete it in Cloudflare.</li>
 </ol>
 <p class="hint">Your domain must already be on this Cloudflare account, and Zero Trust must have been opened once (so the account has a team name).</p>
@@ -103,9 +121,17 @@ export type FormView = {
   readonly reopened: boolean;
   /** The Engine was claimed with its first-run code: the claim stands in for the code. */
   readonly claimed?: boolean;
+  /** The owner's address, shown only to a claimed session. */
+  readonly knownOwner?: string | null;
 };
 
 function ownerField(view: FormView): string {
+  if (view.ownerFromConfig && view.knownOwner) {
+    // Only for a claimed Engine: the claim stands in for the setup code.
+    return `<p class="label">Owner</p>
+<p class="readonly">${esc(view.knownOwner)}</p>
+<p class="hint">The owner you named on the Database screen. The owner can always sign in.</p>`;
+  }
   if (view.ownerFromConfig) {
     // Not the address itself: this page opens without the setup code.
     return `<p class="label">Owner</p>

@@ -149,6 +149,18 @@ An entry says so when updating needs more than the steps in
 
 ### Fixed
 
+- **Cold-start setup on DigitalOcean.** A failed Cloudflare apply or
+  Database run answered 502, which DigitalOcean's edge replaces with its own
+  "failed to forward" page; both now answer 422 and show the report. The
+  token now also needs **Zone - Zone - Read** (Cloudflare lists zones only to
+  a token with it); the link asks for it. A failed token check names the
+  sub-check that failed with Cloudflare's status and codes, on the page and
+  in the log (never the token). The apply step repeats the token link and
+  instructions, written for Cloudflare's new Policies-card screen ("Write",
+  pencil to narrow, Custom expiry). `GET /setup/preview` and `/setup/apply`
+  go back to `/setup`. The Database screen shows a done state with the
+  results and a "run again" link, and logs each step's time. A claimed
+  session sees the stored owner on the sign-in form.
 - `kbe access init` and `kbe access reopen` failed over the REST API with
   "engine_setup_reopen returned something unreadable" after the database had
   already stored the new setup code, so the code was lost. A call that

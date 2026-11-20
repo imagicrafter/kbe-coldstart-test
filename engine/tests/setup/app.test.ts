@@ -492,7 +492,7 @@ describe("the full round trip", () => {
         cf_token: GOOD_TOKEN,
       }),
     );
-    expect(apply.status).toBe(502);
+    expect(apply.status).toBe(422);
     const mcp = await engine.post(
       "/mcp",
       PLATFORM_HOST,

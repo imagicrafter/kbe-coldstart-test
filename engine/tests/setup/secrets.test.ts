@@ -128,7 +128,7 @@ describe("the token and the setup code never leave the request", () => {
       cloudflare: { token: "cloudflare-knows-a-different-token-00001" },
     });
     const out = await apply(world);
-    expect(out.status).toBe(502);
+    expect(out.status).toBe(422);
     expectNothingLeaked(world, [out]);
   });
 
@@ -139,7 +139,7 @@ describe("the token and the setup code never leave the request", () => {
     ]) {
       const world = createWorld({ cloudflare });
       const out = await apply(world);
-      expect(out.status).toBe(502);
+      expect(out.status).toBe(422);
       expectNothingLeaked(world, [out]);
     }
     const world = createWorld();
@@ -149,7 +149,7 @@ describe("the token and the setup code never leave the request", () => {
       status: 500,
     });
     const out = await apply(world);
-    expect(out.status).toBe(502);
+    expect(out.status).toBe(422);
     expectNothingLeaked(world, [out]);
   });
 
@@ -162,7 +162,7 @@ describe("the token and the setup code never leave the request", () => {
       message: "invalid Authorization: Bearer " + GOOD_TOKEN,
     });
     const out = await apply(world);
-    expect(out.status).toBe(502);
+    expect(out.status).toBe(422);
     expect(out.text).toContain("[removed]");
     expectNothingLeaked(world, [out]);
   });
@@ -177,7 +177,7 @@ describe("the token and the setup code never leave the request", () => {
     };
     const world = createWorld({ deps: { cloudflareFetch: throwing } });
     const out = await apply(world);
-    expect(out.status).toBe(502);
+    expect(out.status).toBe(422);
     expectNothingLeaked(world, [out]);
   });
 
@@ -190,7 +190,7 @@ describe("the token and the setup code never leave the request", () => {
       },
     });
     const out = await apply(world);
-    expect(out.status).toBe(502);
+    expect(out.status).toBe(422);
     expect(capture.lines().join("\n")).toContain(
       "could not store the sign-in settings",
     );

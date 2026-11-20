@@ -539,12 +539,16 @@ you can read its output while it runs (in the background). It does this:
    `SETUP_CODE`. The code is never shown. A deployment starts.
 2. Prints a link to Cloudflare. **Give the person that link as soon as it
    appears**, with the lines printed under it. The link opens Cloudflare's
-   "create token" screen with the three permissions filled in. On that
-   screen they choose what the link cannot: Account Resources (their own
-   account only), Zone Resources (Specific zone, the domain of the
-   hostname), and TTL (end date tomorrow). They check that the three
-   permissions are listed, click Continue to summary, then Create Token, and
-   copy the token. They paste it nowhere.
+   "create token" screen with the four permissions filled in. Cloudflare's
+   screen shows them as **Policies** cards: "Zone policy: DNS Write, Zone
+   Read" and "Account policy: Access: Apps and Policies Write, Access:
+   Organizations, Identity Providers, and Groups Write" (older screens say
+   Edit, not Write). On that screen they set what the link cannot: the
+   pencil on the Account policy card to narrow it to their one account, the
+   pencil on the Zone policy card to pick Specific zone (the domain of the
+   hostname), and Expiration (Custom, or 7 days). They check all four
+   permissions are listed (without Zone Read setup cannot find the zone),
+   create the token and copy it. They paste it nowhere.
 3. Waits until the deployment is live, then picks the token up from the
    clipboard by itself.
 4. Asks the app for its list of every change in Cloudflare, prints it, and

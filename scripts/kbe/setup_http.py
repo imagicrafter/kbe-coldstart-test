@@ -201,7 +201,7 @@ class SetupApi:
         """Carry out the previewed plan. The token is used for this one request."""
         form = {"inputs": preview.inputs, "sig": preview.sig, "code": code, "cf_token": token}
         status, body = self._send("apply", form, APPLY_TIMEOUT)
-        if status not in (200, 502) or not isinstance(body.get("steps"), list):
+        if status not in (200, 422, 502) or not isinstance(body.get("steps"), list):
             raise self._refused(status, body)
         return Result(
             ok=status == 200 and body.get("ok") is True,

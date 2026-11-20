@@ -28,6 +28,7 @@ def test_it_uses_only_the_four_documented_parameters():
         {"key": "access", "type": "edit"},
         {"key": "access_acct", "type": "edit"},
         {"key": "dns", "type": "edit"},
+        {"key": "zone", "type": "read"},
     ]
 
 
@@ -44,7 +45,7 @@ def test_the_page_builds_the_same_link():
     assert f'const BASE = "{token_link.BASE}";' in source
     assert f'TOKEN_LINK_NAME = "{token_link.NAME}"' in source
     assert '"accountId=%2A"' in source and '"zoneId=all"' in source
-    keys = dict(re.findall(r"^\s+(apps|organization|dns): \"([a-z_]+)\",$", source, re.MULTILINE))
+    keys = dict(re.findall(r"^\s+(apps|organization|dns|zone): \"([a-z_]+)\",$", source, re.MULTILINE))
     assert list(keys.values()) == [key for key, _scope, _name in token_link.PERMISSIONS]
 
 
@@ -53,9 +54,11 @@ def test_the_permission_names_are_the_page_s():
     for _key, scope, name in token_link.PERMISSIONS:
         assert f'scope: "{scope}"' in source
         assert f'name: "{name}"' in source
-    assert token_link.permission_lines()[0] == "Account - Access: Apps and Policies - Edit"
+    assert token_link.permission_lines()[0] == "Account - Access: Apps and Policies - Write"
+    assert token_link.permission_lines()[-1] == "Zone - Zone - Read"
 
 
 def test_what_the_link_cannot_set_is_listed_for_the_person():
     text = " ".join(token_link.BY_HAND)
-    assert "Zone Resources" in text and "Account Resources" in text and "TTL" in text
+    assert "Zone policy" in text and "Account policy" in text and "Expiration" in text
+    assert "Specific zone" in text and "pencil" in text

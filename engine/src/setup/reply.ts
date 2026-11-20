@@ -75,6 +75,7 @@ export function resultBody(
       status: step.status,
       ...(step.note ? { note: step.note } : {}),
       ...(step.code ? { code: step.code } : {}),
+      ...(step.details ? { details: [...step.details] } : {}),
     })),
     warnings: [...report.warnings],
     checks: (report.checks ?? []).map((check) => ({ ...check })),

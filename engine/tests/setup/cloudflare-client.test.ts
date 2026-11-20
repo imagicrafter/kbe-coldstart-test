@@ -143,6 +143,15 @@ describe("the token", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
+  // Cloudflare's scannable formats: prefix, 40 characters, a checksum.
+  it.each(["cfut_", "cfat_"])("accepts a %s token", (prefix) => {
+    const fake = createFakeCloudflare();
+    const token = prefix + "A1b2C3d4E5".repeat(4) + "0f1e2d3c";
+    expect(() =>
+      createCloudflareClient({ token, fetch: fake.fetch }),
+    ).not.toThrow();
+  });
+
   it("is not in the error when Cloudflare refuses it", async () => {
     const fake = createFakeCloudflare({
       token: "the-real-token-is-a-different-one-000000",

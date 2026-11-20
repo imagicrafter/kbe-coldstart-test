@@ -422,9 +422,10 @@ will do. The second does this:
    the code as `SETUP_CODE` on the app. The code is never shown. This
    starts a deployment, which the command follows until it is live.
 2. Prints a link that opens Cloudflare's "create token" screen with the
-   three permissions filled in. The person sets on that screen what the
-   link cannot (their own account only, the one zone, an end date
-   tomorrow), creates the token and copies it.
+   four permissions filled in (three at Write, Zone at Read). On the
+   screen's Policies cards the person sets what the link cannot (the
+   pencil on each card: their one account, Specific zone for the domain;
+   Expiration Custom or 7 days), creates the token and copies it.
 3. Reads the token from the clipboard. It is refused if it is not shaped
    like a Cloudflare API token or if it is a value from the local env file.
    `--token-file PATH` reads it from a file instead (machines without
@@ -482,8 +483,11 @@ The same, by hand, in a browser.
    together with the other secrets.
 
 2. **The Cloudflare token.** The setup page has the same link to
-   Cloudflare's token screen and says what to set there: three permissions,
-   limited to the one account and the one domain, expiring the next day.
+   Cloudflare's token screen, on the form and again next to the token box
+   on the apply step, and says what to set there: four permissions (DNS and
+   the two Access ones at Write, Zone at Read), narrowed with each Policies
+   card's pencil to the one account and the one domain (Specific zone),
+   with a Custom or 7-day expiry.
 
 3. **The page.** The person opens `https://<the app's own address>/setup`,
    enters the code, checks the hostname (filled in from the config), chooses

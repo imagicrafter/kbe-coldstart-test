@@ -1,7 +1,7 @@
 import { esc } from "../status/page.js";
 import type { ApplyReport, StepReport } from "./apply.js";
 import type { SignedInputs } from "./inputs.js";
-import { errorList, layout } from "./page.js";
+import { errorList, layout, tokenShortHelp } from "./page.js";
 import type { Plan } from "./plan.js";
 import { FINISH_STEP } from "./reply.js";
 
@@ -44,6 +44,7 @@ ${planList(plan)}
 ${codeField}
 <label for="cf_token">Cloudflare API token</label>
 <input type="password" id="cf_token" name="cf_token" autocomplete="one-time-code" spellcheck="false" required>
+${tokenShortHelp()}
 <p class="hint">Used for this one request and then dropped. It is not saved and not written to any log. If your browser offers to save it as a password, say no.</p>
 <button type="submit">Apply these changes</button>
 <p class="hint">This can take up to a minute. <a href="/setup">Start over instead</a>.</p>
@@ -62,7 +63,10 @@ const STATUS_WORDS: Readonly<Record<StepReport["status"], string>> = {
 function reportList(steps: readonly StepReport[]): string {
   const items = steps
     .map((step) => {
-      const note = step.note ? `<p>${esc(step.note)}</p>` : "";
+      const details = step.details?.length
+        ? `<details><summary>What Cloudflare answered</summary><ul>${step.details.map((d) => `<li><code>${esc(d)}</code></li>`).join("")}</ul></details>`
+        : "";
+      const note = step.note ? `<p>${esc(step.note)}</p>${details}` : details;
       return `<li><span class="step-title">${esc(step.title)}</span><span class="badge ${esc(step.status)}">${esc(STATUS_WORDS[step.status])}</span>${note}</li>`;
     })
     .join("");

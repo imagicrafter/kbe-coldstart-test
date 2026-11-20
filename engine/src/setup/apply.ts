@@ -24,7 +24,20 @@ export type StepReport = {
   readonly note?: string;
   /** A fixed word for a failure the command line knows what to say about. */
   readonly code?: string;
+  /** What each sub-check saw (discover.ts). Never a secret. */
+  readonly details?: readonly string[];
 };
+
+/** The code and details a SetupStepError carries, as report fields. */
+export function errorFields(
+  err: unknown,
+): Pick<StepReport, "code" | "details"> {
+  if (!(err instanceof SetupStepError)) return {};
+  return {
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.details.length > 0 ? { details: err.details } : {}),
+  };
+}
 
 /**
  * The sign-in settings stored in workspace.engine_settings.access. Nothing
@@ -137,9 +150,7 @@ async function runSteps(
             ...base,
             status: "failed",
             note: explain(err, step.kind),
-            ...(err instanceof SetupStepError && err.code
-              ? { code: err.code }
-              : {}),
+            ...errorFields(err),
           },
           ...notRun(steps.slice(index + 1)),
         ],
@@ -201,7 +212,12 @@ export async function applyPlan(
   } catch (err) {
     return {
       steps: [
-        { ...TOKEN_STEP, status: "failed", note: explain(err) },
+        {
+          ...TOKEN_STEP,
+          status: "failed",
+          note: explain(err),
+          ...errorFields(err),
+        },
         ...notRun(plan.steps),
       ],
       warnings: [],

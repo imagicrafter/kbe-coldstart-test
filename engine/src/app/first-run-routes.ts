@@ -82,7 +82,7 @@ export function clientKey(c: Context): string {
   return fwd || "unknown";
 }
 
-const page = (c: Context, status: 200 | 400 | 401 | 403 | 409 | 429 | 502 | 503, title: string, body: string) =>
+const page = (c: Context, status: 200 | 400 | 401 | 403 | 409 | 422 | 429 | 503, title: string, body: string) =>
   sendPage(c, status, appLayout("setup", "", title, body));
 
 function claimPage(c: Context, status: 200 | 401 | 409 | 429, problem?: string): Response {
@@ -189,9 +189,36 @@ function getDatabase(use: () => FirstRunRouteDeps) {
     const s = session(c, deps);
     if (!s) return claimPage(c, 200);
     const owner = deps.boot().claimedOwner() ?? "";
-    return page(c, 200, "Database", databaseForm(deps, s.cookie, { ref: deps.projectRef ?? "", owner }));
+    const form = databaseForm(deps, s.cookie, { ref: deps.projectRef ?? "", owner });
+    if (c.req.query("again") === undefined && (await databaseReady(deps))) {
+      return page(c, 200, "Database is ready", doneView(lastResult));
+    }
+    return page(c, 200, "Database", form);
   };
 }
+
+/** The last successful run in this process, to show when the screen is opened again. */
+let lastResult: readonly StepReport[] | null = null;
+
+/** The database has the Engine's schema already. Unknown means no. */
+async function databaseReady(deps: FirstRunRouteDeps): Promise<boolean> {
+  try {
+    const mode = await deps.mode();
+    return mode.kind === "setup" && mode.databaseMissing !== true;
+  } catch {
+    return false;
+  }
+}
+
+function doneView(steps: readonly StepReport[] | null): string {
+  const table = steps ? card(stepsTable(steps)) : card("<p>The Engine's database is set up.</p>");
+  return notice("ok", "The database is set up.") + table +
+    card(`<p>Next: <a href="/setup">set up Cloudflare sign-in</a>. Then delete the Supabase access token.</p>
+<p class="hint">Something to fix? <a href="/setup/database?again=1">Run the database setup again</a>: finished steps are not repeated.</p>`);
+}
+
+/** "migrations:done:41200ms", one per step, for the log. */
+const timed = (steps: readonly StepReport[]) => steps.map((x) => `${x.id}:${x.status}${x.ms === undefined ? "" : `:${x.ms}ms`}`);
 
 let running = false;
 
@@ -242,13 +269,16 @@ function postDatabase(use: () => FirstRunRouteDeps) {
         kbSchema: deps.kbSchema,
         files: files as SqlFiles,
       });
-      logger.info({ ok: result.ok, steps: result.steps.map((x) => `${x.id}:${x.status}`) }, "first run: database setup finished");
+      const totalMs = result.steps.reduce((sum, x) => sum + (x.ms ?? 0), 0);
+      logger.info({ ok: result.ok, total_ms: totalMs, steps: timed(result.steps) }, "first run: database setup finished");
       if (!result.ok) {
-        return page(c, 502, "Database", notice("error", "Setup stopped. Fix what the table says, then run it again: finished steps are not repeated.") + card(stepsTable(result.steps)) + databaseForm(deps, s.cookie, { ref, owner }));
+        // 422, not 502: DigitalOcean's edge replaces an app's 502 with its own page.
+        return page(c, 422, "Database", notice("error", "Setup stopped. Fix what the table says, then run it again: finished steps are not repeated.") + card(stepsTable(result.steps)) + databaseForm(deps, s.cookie, { ref, owner }));
       }
       deps.boot().setOwner(owner);
       deps.onDatabaseReady();
-      return page(c, 200, "Database is ready", card(stepsTable(result.steps)) + card(`<p>Next: <a href="/setup">set up Cloudflare sign-in</a>. Then delete the Supabase access token.</p>`));
+      lastResult = result.steps;
+      return page(c, 200, "Database is ready", doneView(result.steps));
     } finally {
       running = false;
     }

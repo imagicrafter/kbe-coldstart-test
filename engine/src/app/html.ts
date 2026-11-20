@@ -84,7 +84,7 @@ export function postForm(action: string, csrf: string, inner: string, button: st
   return `<form method="post" action="${esc(action)}">${hidden("csrf", csrf)}${inner}<p><button type="submit">${esc(button)}</button></p></form>`;
 }
 
-export type PageStatus = 200 | 201 | 400 | 401 | 403 | 404 | 409 | 415 | 429 | 502 | 503;
+export type PageStatus = 200 | 201 | 400 | 401 | 403 | 404 | 409 | 415 | 422 | 429 | 502 | 503;
 
 export function sendPage(c: Context, status: PageStatus, html: string): Response {
   c.header("Content-Security-Policy", SETUP_CSP);

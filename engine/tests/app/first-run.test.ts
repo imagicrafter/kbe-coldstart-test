@@ -303,11 +303,38 @@ describe("the Database screen over HTTP", () => {
     await w.claim();
     const csrf = await formToken(w);
     const res = await w.post("/setup/database", { csrf, owner_email: "o@example.com", ref: REF, access_token: MGMT_TOKEN });
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     const html = await res.text();
     expect(html).toMatch(/SUPABASE_JWT_SECRET is not this project/);
     expect(html).not.toContain(MGMT_TOKEN);
     expect(w.seen.ready).toBe(0);
+  });
+
+  it("shows a done state when opened again after it succeeded, with a way to run it again", async () => {
+    const w = world();
+    await w.claim();
+    const csrf = await formToken(w);
+    const logs = _captureLogsForTests();
+    try {
+      await w.post("/setup/database", { csrf, owner_email: "o@example.com", ref: REF, access_token: MGMT_TOKEN });
+      // Each step's time is in the log line, and the total.
+      const line = logs.lines().find((l) => l.includes("database setup finished")) ?? "";
+      expect(line).toMatch(/"total_ms":\d+/);
+      expect(line).toMatch(/migrations:(done|unchanged):\d+ms/);
+    } finally {
+      logs.stop();
+    }
+    w.mode.current = { kind: "setup" };
+    const again = await w.req("/setup/database");
+    expect(again.status).toBe(200);
+    const html = await again.text();
+    expect(html).toMatch(/The database is set up/);
+    expect(html).toMatch(/Check the Supabase project/);
+    expect(html).toContain('href="/setup"');
+    expect(html).toContain('href="/setup/database?again=1"');
+    expect(html).not.toContain('name="access_token"');
+    const form = await (await w.req("/setup/database?again=1")).text();
+    expect(form).toContain('name="access_token"');
   });
 
   it("says plainly when the app was built without the SQL files", async () => {
