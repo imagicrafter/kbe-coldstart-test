@@ -1,0 +1,22 @@
+{
+  "name": "kb-engine",
+  "displayName": "KB Engine",
+  "version": "0.1.0",
+  "description": "Feed your own knowledge Engine from Claude: a mechanical ingest skill that copies new Gmail threads, Drive files, Fireflies meetings and Calendar events into your Engine unchanged, and a setup skill that schedules one ingest task per source on the smallest model. Curation happens on the Engine, not in Claude.",
+  "author": {
+    "name": "imagicrafter.ai",
+    "url": "https://imagicrafter.ai"
+  },
+  "homepage": "https://github.com/imagicrafter/kbe-coldstart-test",
+  "repository": "https://github.com/imagicrafter/kbe-coldstart-test",
+  "license": "MIT",
+  "keywords": ["knowledge", "mcp", "ingest", "gmail", "drive", "fireflies"],
+  "userConfig": {
+    "engine_url": {
+      "type": "string",
+      "title": "Engine connector URL",
+      "description": "Your Engine's connector address, ending in /mcp (for example https://kb.example.com/mcp). Shown on your Engine's setup page.",
+      "required": true
+    }
+  }
+}

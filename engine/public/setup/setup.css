@@ -1,0 +1,119 @@
+/* The setup page. No script anywhere; this is its only asset. */
+:root {
+  color-scheme: light dark;
+  --ink: #1a1d21;
+  --soft: #5a6270;
+  --line: #d5d9e0;
+  --paper: #ffffff;
+  --wash: #f4f6f9;
+  --accent: #1f5fbf;
+  --good: #1b7a45;
+  --bad: #b3261e;
+  --warn: #8a5a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8eaee;
+    --soft: #a3abb8;
+    --line: #3a404a;
+    --paper: #16191d;
+    --wash: #1e2228;
+    --accent: #7fb0ff;
+    --good: #6fd39b;
+    --bad: #ff8a80;
+    --warn: #f0c060;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--wash);
+  color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 28px 0 8px; }
+p { margin: 8px 0; }
+.eyebrow {
+  color: var(--soft);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+.hint { color: var(--soft); font-size: 0.9rem; }
+label, .label { display: block; font-weight: 600; margin: 16px 0 4px; }
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+textarea { min-height: 96px; }
+fieldset { border: 0; margin: 16px 0 0; padding: 0; }
+legend { font-weight: 600; padding: 0; }
+.choice { display: flex; gap: 10px; margin: 8px 0; font-weight: 400; }
+.choice input { margin-top: 5px; }
+button {
+  margin-top: 24px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+th, td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 8px 8px 0;
+  text-align: left;
+  vertical-align: top;
+}
+ol.steps { list-style: none; margin: 0; padding: 0; }
+ol.steps > li { border-bottom: 1px solid var(--line); padding: 12px 0; }
+ol.steps > li:last-child { border-bottom: 0; }
+.step-title { font-weight: 600; }
+.badge {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  margin-left: 8px;
+}
+.created, .updated, .unchanged { color: var(--good); }
+.failed { color: var(--bad); }
+.not_run { color: var(--soft); }
+.errors { border-color: var(--bad); }
+.errors, .errors li { color: var(--bad); }
+.warnings { border-color: var(--warn); color: var(--warn); }
+.readonly {
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}

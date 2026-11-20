@@ -1,0 +1,17 @@
+{
+  "name": "kb-engine",
+  "owner": {
+    "name": "imagicrafter.ai",
+    "url": "https://imagicrafter.ai"
+  },
+  "metadata": {
+    "description": "The Claude plugin for kb-engine: feed your own knowledge Engine from Claude's connectors."
+  },
+  "plugins": [
+    {
+      "name": "kb-engine",
+      "source": "./plugin/kb-engine",
+      "description": "Copy new Gmail threads, Drive files, Fireflies meetings and Calendar events into your own knowledge Engine on a schedule, on the smallest model. Curation runs on the Engine."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# Economic development and member groups. Grants and report dates are
+# sections of the Program page, not drawers.
+name: membership-org
+label: Membership organisation
+description: Economic development and member groups. Adds Deals (prospects) and Programs.
+drawers:
+  - id: deals
+    label: Deals
+    key_rule:
+      kind: slug
+      text: "deal: followed by the prospect's domain and a short name."
+    fields:
+      - { name: organisation, kind: key }
+      - { name: stage, kind: enum, values: [lead, engaged, site_visit, proposal, won, lost] }
+      - { name: value, kind: number }
+      - { name: next_step, kind: text }
+      - { name: next_date, kind: date }
+      - { name: last_contact, kind: date }
+    sections: [Summary, Need, Incentives, Timeline, Notes]
+    signals:
+      - A prospect looking at a location, expansion or membership
+    update_rules:
+      auto: [next_step, next_date, last_contact]
+      needs_yes: [stage, value, organisation]
+    curator: { new_page: needs_yes }
+    list_views:
+      - { name: pipeline, filter: stage, sort: next_date, desc: false }
+
+  - id: programs
+    label: Programs
+    key_rule:
+      kind: slug
+      text: "program: followed by a short lower-case name."
+    fields:
+      - { name: status, kind: enum, values: [planned, running, ended] }
+      - { name: funder, kind: key }
+      - { name: next_report, kind: date }
+    sections: [Summary, Members and partners, Grants, Reports, Notes]
+    signals:
+      - A grant, a member benefit or a recurring program
+    update_rules:
+      auto: []
+      needs_yes: [status, funder, next_report]
+    curator: { new_page: needs_yes }
+    list_views:
+      - { name: reports_due, sort: next_report, desc: false }

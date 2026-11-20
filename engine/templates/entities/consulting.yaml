@@ -1,0 +1,46 @@
+# Consultants, agencies and partners. Scope of work, deliverables and
+# out-of-scope asks are sections of the Project page, not drawers.
+name: consulting
+label: Consulting
+description: Consultants, agencies and partners. Adds Deals and Offers.
+drawers:
+  - id: deals
+    label: Deals
+    key_rule:
+      kind: slug
+      text: "deal: followed by the organisation domain and a short name, e.g. deal:example.com-2026-audit."
+    fields:
+      - { name: organisation, kind: key }
+      - { name: stage, kind: enum, values: [lead, qualified, proposal, negotiation, won, lost] }
+      - { name: value, kind: number }
+      - { name: next_step, kind: text }
+      - { name: next_date, kind: date }
+      - { name: last_contact, kind: date }
+    sections: [Summary, Need, Proposal, Timeline, Notes]
+    signals:
+      - A request for a price, a proposal or a scope of work
+    update_rules:
+      auto: [next_step, next_date, last_contact]
+      needs_yes: [stage, value, organisation]
+    curator: { new_page: needs_yes }
+    list_views:
+      - { name: pipeline, filter: stage, sort: next_date, desc: false }
+      - { name: by_value, sort: value, desc: true }
+
+  - id: offers
+    label: Offers
+    key_rule:
+      kind: slug
+      text: "offer: followed by a short lower-case name."
+    fields:
+      - { name: price, kind: text }
+      - { name: status, kind: enum, values: [draft, active, retired] }
+    sections: [What it is, Who it is for, Price, What is included, Notes]
+    signals:
+      - A packaged service described the same way to more than one client
+    update_rules:
+      auto: []
+      needs_yes: [price, status]
+    curator: { new_page: needs_yes }
+    list_views:
+      - { name: active, filter: status }
