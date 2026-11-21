@@ -7,8 +7,10 @@ import { isMcpAppError } from "../mcp/errors.js";
 import { isEmail } from "../setup/inputs.js";
 import { readForm, requireAdmin, storeFailure, type Allowed, type ScreenDeps } from "./guard.js";
 import { appLayout, card, esc, hidden, notice, postForm, sendMessage, sendPage, when } from "./html.js";
-import type { Row } from "./store.js";
+import { AppMissingFunctionError, type Row } from "./store.js";
 import { roleLabel, setChrome } from "./chrome.js";
+import { adminMigrationState, updateBanner, type DatabaseDeps } from "./db-update.js";
+import { sessionSentence } from "../setup/inputs.js";
 
 /**
  * The setup screens that come after sign-in, for administrators only (the
@@ -20,6 +22,7 @@ import { roleLabel, setChrome } from "./chrome.js";
  *   /setup/model     the curator's model key, straight into Supabase Vault
  *   /setup/timer     the curator timer (Supabase cron), and a test poke
  *   /setup/health    one page of checks and the Claude connector address
+ *   /setup/database  migrations applied vs shipped, and the update (database-routes.ts)
  *
  * No secret is ever shown: the model key is written and only reported as
  * "set"; the timer secret never leaves the database.
@@ -30,6 +33,8 @@ export type SettingsDeps = ScreenDeps & {
   readonly embedCheck: () => Promise<boolean>;
   /** Whether https://<host> reaches this app (host-check.ts). Absent: not checked. */
   readonly hostCheck?: (host: string) => Promise<HostReach>;
+  /** Migrations shipped vs applied, and the update. Absent: this app cannot tell. */
+  readonly database?: DatabaseDeps;
 };
 
 export type Handler = (c: Context, me: Allowed, deps: SettingsDeps) => Promise<Response>;
@@ -50,6 +55,7 @@ export function admin(use: () => SettingsDeps, handler: Handler) {
       setChrome(c, { email: me.email, role: roleLabel(who, "administrator"), isAdmin: true });
       return await handler(c, me, deps);
     } catch (err) {
+      if (err instanceof AppMissingFunctionError) return updateNeeded(c, me, deps);
       if (isMcpAppError(err) && err.code !== "internal_error") {
         return sendMessage(c, "setup", 400, "Not done", err.message);
       }
@@ -58,8 +64,20 @@ export function admin(use: () => SettingsDeps, handler: Handler) {
   };
 }
 
-export const page = (c: Context, here: string, title: string, body: string, status: 200 | 400 = 200) =>
+export const page = (c: Context, here: string, title: string, body: string, status: 200 | 400 | 422 | 503 = 200) =>
   sendPage(c, status, appLayout("setup", here, title, body));
+
+/**
+ * A screen whose database function is missing (PGRST202): the app was updated
+ * and its migrations were not applied. The banner, never a raw failure.
+ */
+async function updateNeeded(c: Context, me: Allowed, deps: SettingsDeps): Promise<Response> {
+  const state = await adminMigrationState(deps.database, () => deps.store.health(me.email)).catch(() => null);
+  const banner = state ? updateBanner(state) : "";
+  const body = banner ||
+    '<div class="card errors" role="alert"><p><strong>Database update needed.</strong> This app was updated and its database was not. <a href="/setup/database">Update the database</a></p></div>';
+  return page(c, "", "Database update needed", body, 503);
+}
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const object = (v: unknown): Row => (v && typeof v === "object" && !Array.isArray(v) ? (v as Row) : {});
@@ -290,10 +308,12 @@ const health: Handler = async (c, me, deps) => {
     : { ok: true, detail: "not checked" };
   const timer = object(h["timer"]);
   const migrations = object(h["migrations"]);
+  const state = await adminMigrationState(deps.database, async () => h);
+  const behind = state.known && state.pending.length > 0;
   const checks: Array<[string, boolean, string]> = [
-    ["Database tables", Number(migrations["count"] ?? 0) > 0, `${esc(migrations["count"] ?? 0)} migrations, latest ${esc(migrations["latest"] ?? "none")}`],
+    ["Database tables", Number(migrations["count"] ?? 0) > 0 && !behind, `${esc(migrations["count"] ?? 0)} migrations, latest ${esc(migrations["latest"] ?? "none")}${behind ? ` · <a href="/setup/database">${esc(state.pending.length)} pending</a>` : ""}`],
     ["An owner", Number(h["administrators"] ?? 0) > 0, `${esc(h["administrators"] ?? 0)} administrator(s), ${esc(h["people"] ?? 0)} people`],
-    ["Sign-in", true, `Cloudflare sign-in for ${esc(me.access.host)}`],
+    ["Sign-in", true, `Cloudflare sign-in for ${esc(me.access.host)}. ${esc(sessionSentence(me.access.session))}`],
     ["Hostname reaches the app", reach.ok, esc(reach.detail)],
     ["Topics", Number(h["topics"] ?? 0) > 0, `${esc(h["topics"] ?? 0)} topics`],
     ["Template", true, `base${list(h["templates"]).map((t) => `, ${esc(t)}`).join("")}`],
@@ -302,7 +322,7 @@ const health: Handler = async (c, me, deps) => {
     ["Timer", !!object(timer["job"])["schedule"] && timer["enabled"] === true, object(timer["job"])["schedule"] ? "on: new items and every hour" : "off"],
   ];
   const rows = checks.map(([name, ok, text]) => `<tr><td>${ok ? "OK" : "Needs work"}</td><td>${esc(name)}</td><td>${text}</td></tr>`).join("");
-  const body = card(`<table><thead><tr><th></th><th>Check</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
+  const body = updateBanner(state) + card(`<table><thead><tr><th></th><th>Check</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
 <p>Waiting for a yes: ${esc(h["pending_reviews"] ?? 0)} · flagged: ${esc(h["flagged"] ?? 0)}</p>`) +
     (reach.ok ? "" : doDomainCard(me.access.host)) +
     card(`<h2>Connect Claude</h2><p>Add a custom connector in Claude with this address:</p><pre>${esc(me.access.resourceUrl)}</pre><p>People open their own pages, changes waiting for a yes and flagged items at <a href="/app">/app</a>.</p>`);

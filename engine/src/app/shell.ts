@@ -29,6 +29,7 @@ export const SETUP_NAV: readonly NavItem[] = [
   { href: "/setup/model", label: "Model key", icon: "key", group: "Setup" },
   { href: "/setup/timer", label: "Timer", icon: "clock", group: "Setup" },
   { href: "/setup/backup", label: "Backup", icon: "archive", group: "Setup" },
+  { href: "/setup/database", label: "Database", icon: "database", group: "Setup" },
   { href: "/setup/health", label: "Health", icon: "heart", group: "Setup" },
   { href: "/setup/indexing", label: "Indexing", icon: "database", group: "Engine" },
 ];

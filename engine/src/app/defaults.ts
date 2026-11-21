@@ -11,11 +11,31 @@ import type { FirstRunRouteDeps, HeldVerdict } from "./first-run-routes.js";
 import { attemptCheck, codeValid } from "../setup/db.js";
 import { refFromUrl } from "./mgmt.js";
 import type { SettingsDeps } from "./settings-routes.js";
-import { liveStore } from "./store.js";
+import { liveStore, migrationsApplied } from "./store.js";
+import type { DatabaseDeps } from "./db-update.js";
+import { allowOutboundHost } from "../http/outbound-allowlist.js";
+import { SUPABASE_API_HOST } from "./first-run.js";
 
 /** The app screens' real dependencies, read on every request. */
 
 const csrf = createCsrf(env.SUPABASE_JWT_SECRET);
+
+/** The Database screen after sign-in, and the boot check (db-update.ts). */
+export const liveDatabase = (): DatabaseDeps => ({
+  projectRef: refFromUrl(env.SUPABASE_URL),
+  kbSchema: env.KB_SCHEMA,
+  files: () => {
+    const dir = findRepoDir();
+    return dir ? repoSqlFiles(dir) : null;
+  },
+  // The Management API host joins the outbound allowlist only when an
+  // administrator runs an update.
+  fetch: (url, init) => {
+    allowOutboundHost(SUPABASE_API_HOST);
+    return fetch(url, init);
+  },
+  applied: migrationsApplied,
+});
 
 const liveScreens = (): SettingsDeps => ({
   mode: currentMode,
@@ -25,6 +45,7 @@ const liveScreens = (): SettingsDeps => ({
   now: Date.now,
   embedCheck: async () => (await embedText("health check")).length > 0,
   hostCheck: (host) => checkHostReaches(host),
+  database: liveDatabase(),
 });
 
 const liveFirstRun = (): FirstRunRouteDeps => ({

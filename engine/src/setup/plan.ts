@@ -80,6 +80,8 @@ export type PlanStep =
 export type Plan = {
   readonly host: string;
   readonly level: Level;
+  /** The main sign-in length, also the connector's OAuth grant length. */
+  readonly session: SessionLength;
   readonly connectorUrl: string;
   readonly steps: readonly PlanStep[];
 };
@@ -187,7 +189,7 @@ function engineApp(inputs: SetupInputs): ApplicationStep {
     title: `Put Cloudflare sign-in in front of ${inputs.host}`,
     lines: [
       `Application for ${inputs.host} (every path), sign-in by one-time PIN, sessions last ${SESSION_NAMES[mainSession(inputs)]}.`,
-      "Managed OAuth is switched on, so Claude can connect.",
+      `Managed OAuth is switched on, so Claude can connect. Claude's connector re-approves every ${SESSION_NAMES[mainSession(inputs)]}, the same as a sign-in.`,
       `Allowed redirect addresses: ${CLAUDE_REDIRECT_URIS.join(", ")}, plus apps on this computer (localhost and loopback).`,
       "Any other sign-in rule attached to this application is detached.",
       takeoverLine(inputs),
@@ -211,7 +213,9 @@ function engineApp(inputs: SetupInputs): ApplicationStep {
           allow_any_on_loopback: true,
           allowed_uris: [...CLAUDE_REDIRECT_URIS],
         },
-        grant: { access_token_lifetime: "15m", session_duration: "168h" },
+        // The connector's approval lasts as long as a sign-in (Justin,
+        // 2026-11-20): the same setting, 1 year by default.
+        grant: { access_token_lifetime: "15m", session_duration: mainSession(inputs) },
       },
     },
   };
@@ -315,6 +319,7 @@ export function buildPlan(inputs: SetupInputs): Plan {
   return {
     host: inputs.host,
     level: inputs.level,
+    session: mainSession(inputs),
     connectorUrl: `https://${inputs.host}/mcp`,
     steps: [
       organizationStep(),

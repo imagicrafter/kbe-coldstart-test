@@ -33,6 +33,8 @@ export type AccessSettings = {
   readonly source: "environment" | "database";
   /** The access level chosen at setup ("owner", "people" or "domain"), if recorded. */
   readonly level?: string | undefined;
+  /** The sign-in length chosen at setup (also the connector's approval length), if recorded. */
+  readonly session?: string | undefined;
 };
 
 export type Settings = {
@@ -103,6 +105,7 @@ const StoredAccess = z.object({
   host: z.string().regex(/^[a-z0-9.-]+$/i, "must be a bare hostname"),
   resource_url: z.string().url().optional(),
   level: z.string().max(40).optional(),
+  session: z.string().max(10).optional(),
 });
 
 /** Sign-in settings from the database row, or null when absent or invalid. */
@@ -125,6 +128,7 @@ export function accessFromDatabase(raw: unknown): AccessSettings | null {
     resourceUrl: a.resource_url ?? `https://${a.host}/mcp`,
     source: "database",
     level: a.level,
+    session: a.session,
   };
 }
 

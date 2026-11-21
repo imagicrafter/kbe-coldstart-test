@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { SetupInputs } from "../../src/setup/inputs.js";
+import { sessionSentence, type SetupInputs } from "../../src/setup/inputs.js";
 import {
   buildPlan,
   CLAUDE_REDIRECT_URIS,
@@ -171,6 +171,23 @@ describe("the plan", () => {
     expect(step<ApplicationStep>(month, "engine_app").lines.join(" ")).toMatch(/sessions last 30 days/);
     expect(step<ApplicationStep>(month, "admin_app").body["session_duration"]).toBe("12h");
     expect(step<ApplicationStep>(month, "admin_app").secondFactor).toBe(true);
+  });
+
+  it("sets the connector's OAuth approval to the same length as a sign-in (default 1 year)", () => {
+    const grant = (inputs: typeof base) =>
+      (step<ApplicationStep>(inputs, "engine_app").body["oauth_configuration"] as { grant: Record<string, string> }).grant;
+    expect(grant(base)).toEqual({ access_token_lifetime: "15m", session_duration: "8760h" });
+    expect(grant({ ...base, session: "720h" as const }).session_duration).toBe("720h");
+    expect(grant({ ...base, session: "24h" as const }).session_duration).toBe("24h");
+    expect(buildPlan(base).session).toBe("8760h");
+    expect(step<ApplicationStep>(base, "engine_app").lines.join(" ")).toMatch(/connector re-approves every 1 year/);
+  });
+
+  it("says both lengths in one sentence, and never guesses an unrecorded one", () => {
+    expect(sessionSentence("8760h")).toBe("You stay signed in for 1 year; Claude's connector re-approves every 1 year.");
+    expect(sessionSentence("720h")).toBe("You stay signed in for 30 days; Claude's connector re-approves every 30 days.");
+    expect(sessionSentence(undefined)).toMatch(/not recorded/);
+    expect(sessionSentence("999h")).toMatch(/not recorded/);
   });
 
   it("takes over what is already there only when asked, and says which in words", () => {

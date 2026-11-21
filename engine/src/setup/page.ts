@@ -1,6 +1,6 @@
 import { esc } from "../status/page.js";
 import { setupMenu, shell } from "../app/shell.js";
-import { DEFAULT_SESSION, MAX_DOMAINS, MAX_EMAILS, SESSIONS, SESSION_NAMES, type FormValues, type SessionLength } from "./inputs.js";
+import { DEFAULT_SESSION, MAX_DOMAINS, MAX_EMAILS, SESSIONS, SESSION_NAMES, sessionSentence, type FormValues, type SessionLength } from "./inputs.js";
 import { TOKEN_PERMISSIONS } from "./permissions.js";
 import { tokenLink } from "./token-link.js";
 
@@ -208,6 +208,8 @@ ${sessionField(v)}
 export type InfoView = {
   readonly host: string;
   readonly level: string | null;
+  /** The sign-in length stored by setup (also the connector's), if recorded. */
+  readonly session?: string | null;
   readonly source: "environment" | "database";
   /** Why no form is shown. */
   readonly reason: "environment" | "complete" | "no_code";
@@ -247,6 +249,7 @@ export function infoPage(view: InfoView, version: string): string {
 <tr><th>Hostname</th><td class="mono">${esc(view.host)}</td></tr>
 <tr><th>Who may sign in</th><td>${esc(level)}</td></tr>
 <tr><th>Connector address</th><td class="mono">https://${esc(view.host)}/mcp</td></tr>
+<tr><th>How long it lasts</th><td>${esc(sessionSentence(view.session))}</td></tr>
 </tbody>
 </table>
 </div>

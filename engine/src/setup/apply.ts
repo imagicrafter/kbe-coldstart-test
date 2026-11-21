@@ -2,7 +2,7 @@ import { z, ZodError } from "zod";
 import { CloudflareError, type CloudflareClient } from "./cloudflare-client.js";
 import { readBack, type Check } from "./checks.js";
 import { discover, SetupStepError } from "./discover.js";
-import type { Level } from "./inputs.js";
+import { SESSIONS, type Level, type SessionLength } from "./inputs.js";
 import { permissionLabel, type TokenPermission } from "./permissions.js";
 import type { Plan, PlanStep } from "./plan.js";
 import { runStep, type ApplyContext, type StepStatus } from "./steps.js";
@@ -53,6 +53,8 @@ export const StoredAccessSchema = z
     host: z.string().min(1),
     resource_url: z.string().url(),
     level: z.enum(["owner", "people", "domain"]),
+    /** The sign-in length, which is also the connector's approval length. */
+    session: z.enum(SESSIONS).optional(),
   })
   .strict()
   .refine((a) => a.aud !== a.status_aud, {
@@ -104,6 +106,7 @@ function storedAccess(
   context: ApplyContext,
   host: string,
   level: Level,
+  session: SessionLength,
 ): StoredAccess {
   return StoredAccessSchema.parse({
     team_domain: context.teamDomain,
@@ -112,6 +115,7 @@ function storedAccess(
     host,
     resource_url: `https://${host}/mcp`,
     level,
+    session,
   });
 }
 
@@ -182,7 +186,7 @@ function finalReport(
     return {
       steps: [checked, ...done.reports],
       warnings,
-      access: storedAccess(done.context, plan.host, plan.level),
+      access: storedAccess(done.context, plan.host, plan.level, plan.session),
     };
   } catch (err) {
     // Everything ran, but what was read back cannot be trusted as settings.

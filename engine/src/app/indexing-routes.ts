@@ -4,6 +4,7 @@ import { UUID, readForm } from "./guard.js";
 import { card, esc, hidden, postForm, sendMessage, when } from "./html.js";
 import { admin, page, type Handler, type SettingsDeps } from "./settings-routes.js";
 import type { Row } from "./store.js";
+import { adminMigrationState, updateBanner } from "./db-update.js";
 
 /**
  * /setup/indexing, administrators only (admin app, second factor): how far
@@ -39,6 +40,7 @@ function lastRun(run: Row): string {
 
 const indexing: Handler = async (c, me, deps) => {
   const s = await deps.store.indexing(me.email);
+  const banner = updateBanner(await adminMigrationState(deps.database, () => deps.store.health(me.email)).catch(() => ({ known: false, exact: false, shipped: 0, applied: 0, pending: [] })));
   const cur = object(s["curator"]);
   const backup = object(s["backup"]);
   const status = card(`<h2>Status</h2><table class="stats"><tbody>
@@ -63,7 +65,7 @@ ${cur["has_engine_url"] === true ? postForm("/setup/timer", timerCsrf, hidden("e
   const actions = card(`<h2>Actions</h2>
 ${postForm("/setup/indexing/rerun", csrf, "", "Re-run pending summaries")}
 <p class="hint">Queues every page still waiting for a summary again and wakes the curator. To re-index one page, use Re-index on that page.</p>`);
-  return page(c, "/setup/indexing", "Indexing", status + settings + actions);
+  return page(c, "/setup/indexing", "Indexing", banner + status + settings + actions);
 };
 
 const rerun: Handler = async (c, me, deps) => {

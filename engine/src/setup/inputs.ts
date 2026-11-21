@@ -31,6 +31,19 @@ export const SESSION_NAMES: Readonly<Record<SessionLength, string>> = {
   "8760h": "1 year",
 };
 
+/**
+ * Both lengths in one sentence, for the Sign-in and Health screens. The
+ * connector's OAuth approval is set from the same setting (plan.ts). A setup
+ * that ran before the length was stored says so instead of guessing.
+ */
+export function sessionSentence(session: string | null | undefined): string {
+  const name = session ? SESSION_NAMES[session as SessionLength] : undefined;
+  if (!name) {
+    return "Sign-in length not recorded (sign-in was set up before it was stored). Run the sign-in setup again to set both to the same length; the default is 1 year.";
+  }
+  return `You stay signed in for ${name}; Claude's connector re-approves every ${name}.`;
+}
+
 export const MAX_EMAILS = 50;
 export const MAX_DOMAINS = 10;
 /** A preview is good for this long; after that the form must be sent again. */

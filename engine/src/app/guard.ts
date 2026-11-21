@@ -5,7 +5,8 @@ import { requireAdministrator, type GuardDeps } from "../setup/guard.js";
 import type { EngineMode } from "../setup/mode.js";
 import { isFormPost, sameSite, type Csrf } from "./csrf.js";
 import { sendMessage, type Area } from "./html.js";
-import { AppDeniedError, AppInputError, type AppStore, type Row } from "./store.js";
+import { UPDATE_NEEDED_TEXT } from "./db-update.js";
+import { AppDeniedError, AppInputError, AppMissingFunctionError, type AppStore, type Row } from "./store.js";
 
 /**
  * Who may use the signed-in screens.
@@ -121,6 +122,7 @@ export async function readForm(
 export function storeFailure(c: Context, area: Area, err: unknown): Response {
   if (err instanceof AppInputError) return sendMessage(c, area, 400, "Not saved", err.message);
   if (err instanceof AppDeniedError) return sendMessage(c, area, 403, "No access", "That is not yours to change.");
+  if (err instanceof AppMissingFunctionError) return sendMessage(c, area, 503, "Database update needed", UPDATE_NEEDED_TEXT);
   return sendMessage(c, area, 503, "Unavailable", "The Engine's database did not answer. Try again in a minute.");
 }
 

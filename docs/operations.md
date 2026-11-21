@@ -184,9 +184,13 @@ reaches an Engine when its app is deployed again.
 **An Engine made with the "Deploy to DigitalOcean" button** (README) does
 not update itself: a new release on `stable` changes nothing until the
 owner redeploys. In the DigitalOcean dashboard open the app, then
-**Actions -> Force Rebuild and Deploy**. The app's Database screen applies
-any new migrations the release brings (open `/setup/database` again after
-the rebuild, or run `python -m kbe db migrate`). Read `CHANGELOG.md` first.
+**Actions -> Force Rebuild and Deploy**. Then open `/setup/database` (an
+administrator, after sign-in): it lists the migrations the release brings
+that the database does not have yet and applies only those with a Supabase
+access token used once and never kept (or run `python -m kbe db migrate`).
+Until then the app logs `database update needed` at boot with the pending
+file names, and Health, Indexing and any screen whose database function is
+missing show "Database update needed: N pending". Read `CHANGELOG.md` first.
 
 **An Engine deployed with `kbe deploy`**:
 

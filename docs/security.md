@@ -434,7 +434,9 @@ Each item matches what the setup page sends and expects.
   it, wins over the hostname application, and does not catch a path that
   merely starts with the same letters.
 - **Managed OAuth.**
-  `oauth_configuration: { enabled, dynamic_client_registration: { enabled, allow_any_on_localhost, allow_any_on_loopback, allowed_uris }, grant: { access_token_lifetime: "15m", session_duration: "168h" } }`
+  `oauth_configuration: { enabled, dynamic_client_registration: { enabled, allow_any_on_localhost, allow_any_on_loopback, allowed_uris }, grant: { access_token_lifetime: "15m", session_duration: <the chosen sign-in length, default "8760h"> } }`
+  (the connector re-approves as often as a person signs in; both lengths are
+  shown on the Sign-in and Health screens)
   is accepted and read back unchanged. At the edge, `/` and `/mcp` without a
   sign-in answer 401 with a `WWW-Authenticate: Bearer` header that points at
   the resource metadata, and both `/.well-known/oauth-authorization-server`

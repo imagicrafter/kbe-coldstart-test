@@ -454,6 +454,7 @@ describe("POST /setup/apply", () => {
       host: "engine.example.com",
       resource_url: "https://engine.example.com/mcp",
       level: "people",
+      session: "8760h",
     });
     expect(world.db.row.setup_state).toBe("complete");
     expect(world.db.row.code_hash).toBeNull();

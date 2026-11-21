@@ -11,6 +11,22 @@ An entry says so when updating needs more than the steps in
 
 ### Added
 
+- **Database update screen** (`/setup/database` after sign-in; migration
+  0059). Administrators see migrations applied vs shipped, the pending files
+  by name, and apply only those with a one-time Supabase access token (never
+  stored, logged or shown); the schema is re-exposed and the Data API told to
+  reload. Per-step results and timings. In the setup menu and nav. At boot the
+  app logs `database update needed` with the pending names. Health and
+  Indexing show "Database update needed: N pending", and any screen whose
+  database function is missing (PGRST202) shows that instead of a raw error.
+  **Updating to this release:** apply its migration with the new screen once
+  (or `kbe db migrate`).
+- **Connector approval length follows the sign-in length.** Cloudflare's
+  managed OAuth grant for Claude's connector now uses the sign-in length
+  chosen at setup (default 1 year) instead of a fixed 7 days; the Sign-in and
+  Health screens show both. Run the sign-in setup again to apply it to an
+  existing Engine.
+
 - **Deploy to DigitalOcean button** (Step F; `.do/deploy.template.yaml`,
   root `Dockerfile`). One service built from the repository root, so the
   running app carries `supabase/migrations` and the embed function for the

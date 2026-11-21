@@ -123,8 +123,11 @@ end $$;
 `;
 
 type Step = (inputs: DbSetupInputs) => Promise<{ readonly status: StepStatus; readonly note?: string }>;
+/** What the steps shared with the Database update screen (db-update.ts) need. */
+export type CoreInputs = Pick<DbSetupInputs, "mgmt" | "files">;
+type CoreStep = (inputs: CoreInputs) => Promise<{ readonly status: StepStatus; readonly note?: string }>;
 
-const project: Step = async ({ mgmt }) => {
+export const projectStep: CoreStep = async ({ mgmt }) => {
   const p = (await mgmt.get("")) as Record<string, unknown> | null;
   const status = String(p?.["status"] ?? "unknown");
   if (status !== "ACTIVE_HEALTHY") {
@@ -166,7 +169,7 @@ const extensions: Step = async ({ mgmt }) => {
   }
 };
 
-const migrations: Step = async ({ mgmt, files }) => {
+export const migrationsStep: CoreStep = async ({ mgmt, files }) => {
   await mgmt.sql(TRACKING_SQL);
   const applied = new Map(
     rows(await mgmt.sql(`select filename, checksum from ${SCHEMA}.kbe_migrations`)).map((r) => [String(r["filename"]), String(r["checksum"])]),
@@ -194,7 +197,7 @@ const migrations: Step = async ({ mgmt, files }) => {
   return ran === 0 ? { status: "unchanged" } : { status: "done", note: `${ran} file${ran === 1 ? "" : "s"} applied.` };
 };
 
-const schema: Step = async ({ mgmt }) => {
+export const schemaStep: CoreStep = async ({ mgmt }) => {
   const pg = (await mgmt.get("/postgrest")) as Record<string, unknown> | null;
   const listed = String(pg?.["db_schema"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (listed.includes(SCHEMA)) return { status: "unchanged" };
@@ -242,7 +245,7 @@ const setupCode: Step = async ({ mgmt, bootCode }) => {
 };
 
 const RUNNERS: Readonly<Record<string, Step>> = {
-  project, keys, extensions, migrations, schema, embed, embed_token: embedToken, owner, setup_code: setupCode,
+  project: projectStep, keys, extensions, migrations: migrationsStep, schema: schemaStep, embed, embed_token: embedToken, owner, setup_code: setupCode,
 };
 
 /** Run every step in order; stop at the first failure. */
@@ -253,15 +256,24 @@ export async function runDbSetup(inputs: DbSetupInputs): Promise<{ readonly ok: 
       steps: [{ id: "project", title: "Check the Supabase project", status: "failed", note: `This screen sets up the default schema only. For KB_SCHEMA=${inputs.kbSchema} use \`kbe db migrate\`.` }],
     };
   }
-  const now = inputs.now ?? Date.now;
+  return runSteps(DB_STEPS, RUNNERS, inputs, inputs.now ?? Date.now);
+}
+
+/** Run the named steps in order with their runners; stop at the first failure. */
+export async function runSteps<I>(
+  defs: ReadonlyArray<{ readonly id: string; readonly title: string }>,
+  runners: Readonly<Record<string, (inputs: I) => Promise<{ readonly status: StepStatus; readonly note?: string }>>>,
+  inputs: I,
+  now: () => number,
+): Promise<{ readonly ok: boolean; readonly steps: readonly StepReport[] }> {
   const steps: StepReport[] = [];
   let failed = false;
-  for (const def of DB_STEPS) {
+  for (const def of defs) {
     if (failed) {
       steps.push({ ...def, status: "not_run" });
       continue;
     }
-    const run = RUNNERS[def.id];
+    const run = runners[def.id];
     const started = now();
     try {
       const out = run ? await run(inputs) : { status: "failed" as const, note: "unknown step" };

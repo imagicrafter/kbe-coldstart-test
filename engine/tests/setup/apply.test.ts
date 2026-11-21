@@ -68,6 +68,7 @@ describe("apply: a fresh Cloudflare account", () => {
       host: "engine.example.com",
       resource_url: "https://engine.example.com/mcp",
       level: "people",
+      session: "8760h",
     });
     expect(report.access?.aud).not.toBe(report.access?.status_aud);
   });

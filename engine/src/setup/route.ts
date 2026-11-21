@@ -145,6 +145,7 @@ function getRoute(use: () => SetupDeps) {
       const view = {
         host: at.access.host,
         level: at.access.level ?? null,
+        session: at.access.session ?? null,
         source: at.access.source,
         reason: at.reason,
         email: at.email,

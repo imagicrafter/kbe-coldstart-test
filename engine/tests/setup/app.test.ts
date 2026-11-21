@@ -408,6 +408,7 @@ describe("the full round trip", () => {
       host: ENGINE_HOST,
       resource_url: "https://engine.example.com/mcp",
       level: "people",
+      session: "8760h",
     });
 
     // 4. No restart: the very next request is out of setup mode.

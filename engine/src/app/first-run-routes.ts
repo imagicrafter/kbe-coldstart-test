@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../log/logger.js";
 import { isEmail } from "../setup/inputs.js";
@@ -235,10 +235,12 @@ ${hidden("csrf", claimFormToken(cookie, "database"))}
 </form>`);
 }
 
+// Once the Engine is set up, /setup/database belongs to the administrators'
+// update screen (database-routes.ts): these pass the request on.
 function getDatabase(use: () => FirstRunRouteDeps) {
-  return async (c: Context) => {
+  return async (c: Context, next: Next) => {
     const deps = use();
-    if (!(await stillNew(deps))) return sendMessage(c, "setup", 404, "Not here", "This screen is only for a new Engine.");
+    if (!(await stillNew(deps))) return next();
     const s = session(c, deps);
     if (!s) return claimPage(c, 200);
     const owner = deps.boot().claimedOwner() ?? "";
@@ -276,9 +278,9 @@ const timed = (steps: readonly StepReport[]) => steps.map((x) => `${x.id}:${x.st
 let running = false;
 
 function postDatabase(use: () => FirstRunRouteDeps) {
-  return async (c: Context) => {
+  return async (c: Context, next: Next) => {
     const deps = use();
-    if (!(await stillNew(deps))) return sendMessage(c, "setup", 404, "Not here", "This screen is only for a new Engine.");
+    if (!(await stillNew(deps))) return next();
     const s = session(c, deps);
     if (!s) return sendMessage(c, "setup", 401, "Claim this Engine first", "Open /setup with the one-time code from the app's log.");
     if (!sameSite(c) || !isFormPost(c)) return sendMessage(c, "setup", 403, "Not accepted", "Send this form from the page itself.");

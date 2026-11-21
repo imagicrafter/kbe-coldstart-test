@@ -97,6 +97,16 @@ describe("the Knowledge screens", () => {
     clean(html);
   });
 
+  it("stale is only a tag (not updated in 90 days): the page is still listed and linked, and nothing is called", async () => {
+    const w = world();
+    const html = await (await w.http.get("/app/knowledge/organisations", ASSERT.reader)).text();
+    expect(html).toContain('<span class="badge warn" title="Not updated in 90 days">stale</span>');
+    expect(html).toContain("Acme &lt;Corp&gt;");
+    // Reading a drawer with a stale page makes no write, flag, review or re-index.
+    const writes = w.fake.calls.filter((c) => !["whoami", "drawerPages", "knowledgeTree"].includes(c.fn));
+    expect(writes).toEqual([]);
+  });
+
   it("bad paging and sort values fall back to safe defaults", async () => {
     const w = world();
     await w.http.get("/app/knowledge/organisations?p=-4&size=9999&sort=evil&topic=Bad%20Topic", ASSERT.reader);

@@ -29,7 +29,9 @@ import { currentMode, isSetupPath, type EngineMode } from "./setup/mode.js";
 import { makeSetupRoutes } from "./setup/route.js";
 import { notFoundPage, wrongHost } from "./app/not-found.js";
 import { TICK_PATH, makeTickRoute } from "./curator/route.js";
-import { firstRunDeps, screenDeps } from "./app/defaults.js";
+import { firstRunDeps, liveDatabase, screenDeps } from "./app/defaults.js";
+import { warnPendingAtBoot } from "./app/db-update.js";
+import { makeDatabaseRoutes } from "./app/database-routes.js";
 import { liveFirstRunDeps, startFirstRun } from "./app/first-run.js";
 import { firstRunGate, makeFirstRunRoutes } from "./app/first-run-routes.js";
 import { makeOwnerRoutes } from "./app/owner-routes.js";
@@ -111,6 +113,8 @@ app.get("/setup/assets/:file", setupAssets);
 app.use("/setup", firstRunGate(firstRunDeps));
 app.use("/setup/*", firstRunGate(firstRunDeps));
 app.route("/setup", makeFirstRunRoutes(firstRunDeps));
+// After setup, /setup/database is the administrators' update screen.
+app.route("/setup", makeDatabaseRoutes(screenDeps));
 // The setup screens after sign-in (administrators, app/settings-routes.ts).
 app.route("/setup", makeSettingsRoutes(screenDeps));
 app.route("/setup", makeIndexingRoutes(screenDeps));
@@ -278,6 +282,8 @@ app.notFound(notFoundPage);
 if (env.NODE_ENV !== "test") {
   // A new Engine with no SETUP_CODE makes its one-time claim code now.
   await startFirstRun(liveFirstRunDeps(currentMode));
+  // An app update can ship migrations the database does not have yet.
+  void warnPendingAtBoot(liveDatabase(), currentMode);
   const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     logger.info(
       { port: info.port, node_env: env.NODE_ENV, git_sha: env.SOURCE_COMMIT },

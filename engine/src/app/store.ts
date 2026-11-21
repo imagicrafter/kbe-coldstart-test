@@ -15,6 +15,15 @@ export class AppInputError extends Error {}
 export class AppDeniedError extends Error {}
 /** Anything else. The page says "try again" without detail. */
 export class AppStoreError extends Error {}
+/**
+ * The database has no such function (PostgREST PGRST202): the app was
+ * updated and its new migrations were never applied. The page says
+ * "Database update needed" and links to /setup/database.
+ */
+export class AppMissingFunctionError extends AppStoreError {}
+
+/** PostgREST's "function not found in the schema cache". */
+export const MISSING_FUNCTION = "PGRST202";
 
 export type Row = Record<string, unknown>;
 
@@ -82,6 +91,7 @@ async function rpc(fn: string, args: Readonly<Record<string, unknown>>): Promise
     logger.warn({ fn, code: error.code }, "app RPC failed");
     if (error.code === "22023") throw new AppInputError(error.message.slice(0, 300));
     if (error.code === "42501") throw new AppDeniedError("not allowed");
+    if (error.code === MISSING_FUNCTION) throw new AppMissingFunctionError(fn);
     throw new AppStoreError("database error");
   }
   return data;
@@ -95,6 +105,12 @@ function saved(data: unknown): SaveResult {
   const row = list(data)[0];
   if (!row) throw new AppStoreError("no result");
   return { id: String(row["id"]), content_hash: String(row["content_hash"]), changed: row["changed"] === true };
+}
+
+/** The applied migration file names (0059), for the service itself. */
+export async function migrationsApplied(): Promise<readonly string[]> {
+  const data = await rpc("engine_migrations_applied", {});
+  return Array.isArray(data) ? data.map(String) : [];
 }
 
 export const liveStore: AppStore = {

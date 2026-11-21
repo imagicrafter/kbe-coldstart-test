@@ -69,6 +69,11 @@ describe("Cloudflare email obfuscation is switched off", () => {
     const html = infoPage({ host: "kb.example.com", level: null, source: "database", reason: "complete", email: "admin@example.com" } as never, "v");
     expect(html.indexOf("<!--email_off-->")).toBeLessThan(html.indexOf("admin@example.com"));
   });
+
+  it("the closed sign-in page shows both lengths: the sign-in and the connector's approval", () => {
+    const html = infoPage({ host: "kb.example.com", level: "owner", session: "8760h", source: "database", reason: "complete", email: "admin@example.com" }, "v");
+    expect(html).toContain("You stay signed in for 1 year; Claude&#39;s connector re-approves every 1 year.");
+  });
 });
 
 describe("the Knowledge menu", () => {
