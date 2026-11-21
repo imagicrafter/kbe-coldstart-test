@@ -53,7 +53,12 @@ Nothing is added until the person clicks it.
 - `get_ingest_plan` (account required for Gmail and Fireflies) returns the
   caller's rules and a **narrowed** provider query: for Gmail the OR of the
   working include rules minus each exclude, e.g.
-  `((from:acme.com OR to:acme.com OR cc:acme.com) OR label:board) -label:personal after:<since>`;
+  `((from:acme.com OR to:acme.com OR cc:acme.com) OR label:board) -label:personal after:YYYY/MM/DD`
+  (a date one day before `since`, never epoch seconds; label terms use the
+  label name in Gmail's search form: lower case, spaces and slashes as
+  dashes, while rules match by label id). The plan also gives a
+  `fallback_query` with `newer_than:<days>d` that a run tries once when
+  `query` lists nothing;
   for Fireflies a channel and participant filter. A query that lists too much
   is harmless.
 - `record_source_item` evaluates the caller's current rules **in the

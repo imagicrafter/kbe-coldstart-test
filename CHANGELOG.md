@@ -9,6 +9,27 @@ An entry says so when updating needs more than the steps in
 
 ## Unreleased
 
+### Fixed
+
+- **Gmail ingest on claude.ai (plugin 0.2.1).** The plan's Gmail query uses
+  `after:YYYY/MM/DD` (one day before `since`) instead of epoch seconds, which
+  the claude.ai Gmail connector ignored, and offers a `fallback_query`
+  (`newer_than:<days>d`, same rule terms) that the run tries once when the
+  first query lists nothing. The metadata sample uses `newer_than:7d`.
+  `report_ingest_candidates` says in its reply how many Gmail system labels
+  (INBOX, SENT, UNREAD, CATEGORY_* and the like) it skipped on purpose and
+  whether all of the person's own labels were stored. The `kb-ingest` skill
+  now allows `report_ingest_candidates`, picks the connector whose
+  "Account address" matches the plan's account (and stops if none does),
+  reads each message's label ids and date with get_message / get_thread, and
+  reports which query it used.
+
+### Changed
+
+- **Sources screen layout.** The rule builder is on the left and the ordered
+  rules on the right; saving a rule stays on the same screen with the
+  version as a small note (no separate "Rules saved" page).
+
 ### Added
 
 - **Source inclusion rules (migration 0063).** Gmail and Fireflies ingest

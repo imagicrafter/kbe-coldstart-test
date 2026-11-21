@@ -103,7 +103,11 @@ export function without<T extends object>(value: T, keys: readonly string[]): T 
 
 // ── Gmail search ────────────────────────────────────────────────────────────
 
-/** Gmail's search form of a label name: lower case, spaces and slashes as dashes. */
+/**
+ * Gmail's search form of a label name: lower case, spaces and slashes as
+ * dashes ("Clients/Acme Inc" -> label:clients-acme-inc). Rules match by label
+ * ID on the server; this form is only for the narrowed search text.
+ */
 export function gmailLabelTerm(name: string): string {
   const v = name.trim().toLowerCase().replace(/[\s/]+/g, "-").replace(/["(){}]/g, "");
   return `label:${v}`;
@@ -146,12 +150,31 @@ export function gmailClause(rule: Rule): string | null {
   return parts.length === 1 ? parts[0]! : `(${parts.join(" ")})`;
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * `after:YYYY/MM/DD`, one day before `since` (UTC). A date, not epoch seconds:
+ * the claude.ai Gmail connector returns nothing for an epoch `after:`. The
+ * extra day covers Gmail's own time zone; the Engine drops items it already has.
+ */
+export function gmailAfterTerm(sinceIso: string): string {
+  const d = new Date(Date.parse(sinceIso) - DAY_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `after:${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+}
+
+/** `newer_than:Nd` reaching back past `since` (whole days, plus one): the fallback when `after:` lists nothing. */
+export function gmailNewerThanTerm(sinceIso: string, nowMs: number): string {
+  const days = Math.max(1, Math.ceil((nowMs - Date.parse(sinceIso)) / DAY_MS) + 1);
+  return `newer_than:${days}d`;
+}
+
 /**
  * The narrowed Gmail search for a run: (OR of the working include rules)
- * minus each exclude rule, after `since`. Null when no include rule can match
- * (nothing to list).
+ * minus each exclude rule, then the time term (gmailAfterTerm or
+ * gmailNewerThanTerm). Null when no include rule can match (nothing to list).
  */
-export function gmailQuery(rules: readonly Rule[], sinceEpochSeconds: number): string | null {
+export function gmailQuery(rules: readonly Rule[], timeTerm: string): string | null {
   const includes = rules
     .filter((r) => r.kind === "include" && r.broken !== true)
     .map(gmailClause)
@@ -163,7 +186,7 @@ export function gmailQuery(rules: readonly Rule[], sinceEpochSeconds: number): s
     .filter((c): c is string => c !== null)
     .map((c) => `-${c}`);
   const include = includes.length === 1 ? includes[0]! : `(${includes.join(" OR ")})`;
-  return [include, ...excludes, `after:${sinceEpochSeconds}`].join(" ");
+  return [include, ...excludes, timeTerm].join(" ");
 }
 
 // ── Fireflies ───────────────────────────────────────────────────────────────

@@ -68,8 +68,23 @@ const accountPage: Handler = async (c, me, deps) => {
   const csrf = deps.csrf.token(me.email, SCOPE);
   const title = `${SOURCE_LABEL[String(row["source"])] ?? String(row["source"])}: ${String(row["account"] ?? "")}`;
   const counts = card(`<p>${esc(row["items_saved"] ?? 0)} items kept · ${esc(row["items_skipped"] ?? 0)} left out by the rules. <a href="/app/sources">All your sources</a></p>`);
-  return page(c, title, counts + rulesCard(row, csrf) + suggestionsCard(row, csrf) + addRuleCard(row, csrf) + toolsCard(row, csrf));
+  const split =
+    `<div class="rules-split"><div class="rules-builder">${addRuleCard(row, csrf)}${suggestionsCard(row, csrf)}</div>` +
+    `<div class="rules-list">${savedNote(c)}${rulesCard(row, csrf)}</div></div>`;
+  return page(c, title, counts + split + toolsCard(row, csrf));
 };
+
+/** After a save the screen reloads with ?saved=<version> (and re-file counts): a small note, not a page of its own. */
+function savedNote(c: Context): string {
+  const saved = c.req.query("saved") ?? "";
+  if (!/^\d{1,9}$/.test(saved)) return "";
+  const refiled = Number(/^\d{1,9}$/.test(c.req.query("refiled") ?? "") ? c.req.query("refiled") : 0);
+  const flagged = Number(/^\d{1,9}$/.test(c.req.query("flagged") ?? "") ? c.req.query("flagged") : 0);
+  const extra = refiled > 0
+    ? ` ${refiled} items already kept lost their topic and are only yours until you re-check them; ${flagged} pages built from them are marked for re-checking.`
+    : "";
+  return `<p class="hint saved-note" role="status">Saved. Version ${esc(saved)} is in force.${esc(extra)}</p>`;
+}
 
 /** The several values a repeated form field carries (checkboxes). */
 async function allValues(c: Context, name: string): Promise<readonly string[]> {
@@ -118,10 +133,10 @@ async function save(c: Context, me: Allowed, deps: ScreenDeps, id: string, rules
   logger.info({ version: result["version"], refiled: result["refiled"] }, "app: source rules saved");
   const refiled = Number(result["refiled"] ?? 0);
   const flagged = Number(result["pages_flagged"] ?? 0);
-  const extra = refiled > 0
-    ? ` ${refiled} items already kept lost their topic and are only yours until you re-check them; ${flagged} pages built from them are marked for re-checking.`
-    : "";
-  return sendMessage(c, "app", 200, "Rules saved", `Version ${String(result["version"])} is in force.${extra}`);
+  const saved = Number(result["version"] ?? 0);
+  const counts = refiled > 0 ? `&refiled=${refiled}&flagged=${flagged}` : "";
+  // Stay on the same screen: the new rule shows in the list, the version as a note.
+  return c.redirect(`/app/sources/${id}?saved=${saved}${counts}`, 303);
 }
 
 const changeRules: Handler = async (c, me, deps) => {

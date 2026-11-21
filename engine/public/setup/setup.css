@@ -418,3 +418,12 @@ code.address { overflow-wrap: anywhere; word-break: break-all; }
 .view-pane .page-table td.mono, .panes:not(.view-closed) .page-table td.mono { max-width: 120px; }
 .chip { display: inline-block; border: 1px solid var(--muted); border-radius: 999px; padding: 0 8px; margin: 2px 2px 2px 0; font-size: 0.85rem; }
 .chip.deleted { text-decoration: line-through; color: var(--muted); }
+
+/* Sources: rule builder on the left, the ordered rules on the right. */
+.page:has(.rules-split) { max-width: 1280px; }
+.rules-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; align-items: start; }
+.rules-split > div { min-width: 0; }
+.saved-note { margin: 0 0 8px; }
+@media (max-width: 900px) {
+  .rules-split { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,7 +1,15 @@
 import { z } from "zod";
 import type { ToolSpec } from "../../mcp/tool-helpers.js";
 import { providerFor } from "../../sources/index.js";
-import { firefliesFilter, gmailQuery, isRuleSource, parseRules, type Rule } from "../../sources/rules.js";
+import {
+  firefliesFilter,
+  gmailAfterTerm,
+  gmailNewerThanTerm,
+  gmailQuery,
+  isRuleSource,
+  parseRules,
+  type Rule,
+} from "../../sources/rules.js";
 import { pageRpc, rowsOf } from "./rpc.js";
 
 /**
@@ -41,7 +49,9 @@ function scopeFor(source: IngestSource): Scope {
   switch (source) {
     case "gmail":
       return {
-        list: "Search Gmail MESSAGES with `query` (not threads). Oldest first. Skip messages labelled Spam, Trash or Draft.",
+        list:
+          "Search Gmail MESSAGES with `query` (not threads). Oldest first. Skip messages labelled Spam, Trash or Draft. " +
+          "If the search result lacks label ids or dates, read each listed message (or its thread) with the connector's get_message / get_thread to get them.",
         source_id: "the Gmail message id",
         title: "the message subject",
         body: "the one message: From, To, Cc, Date, then its text exactly as read",
@@ -153,9 +163,8 @@ async function rulesPlan(source: "gmail" | "fireflies", account: string, sub: st
   const firstRun = cursor.last_received_at === null;
   const backfill = p["backfill"] === true ? isoOrNull(p["backfill_from"]) : null;
   const since = sinceFrom(firstRun ? null : cursor, backfill);
-  const sinceSec = Math.floor(Date.parse(since) / 1000);
-  const sampleSince = Math.floor((Date.now() - SAMPLE_DAYS * 86_400_000) / 1000);
-  const query = source === "gmail" ? gmailQuery(rules, sinceSec) : null;
+  const query = source === "gmail" ? gmailQuery(rules, gmailAfterTerm(since)) : null;
+  const fallbackQuery = source === "gmail" ? gmailQuery(rules, gmailNewerThanTerm(since, Date.now())) : null;
   const filter = source === "fireflies" ? firefliesFilter(rules) : null;
   const nothing = source === "gmail" ? query === null : filter === null;
   const sampleWanted = p["sample_requested"] === true;
@@ -172,7 +181,15 @@ async function rulesPlan(source: "gmail" | "fireflies", account: string, sub: st
     rules_version: Number(p["version"] ?? 0),
     rules: summary(rules),
     nothing_to_record: nothing,
-    ...(source === "gmail" ? { query } : { filter }),
+    ...(source === "gmail"
+      ? {
+          query,
+          fallback_query: fallbackQuery,
+          fallback_rule:
+            "If `query` listed 0 messages and `nothing_to_record` is false, search ONCE more with `fallback_query` (same rule terms, newer_than instead of after). " +
+            "Say in the report which query listed the items.",
+        }
+      : { filter }),
     record_with: "record_source_item",
     record_rule:
       `Hand over each listed item with account = "${String(p["account"] ?? account)}" and provider = its metadata (scope.provider). ` +
@@ -182,7 +199,12 @@ async function rulesPlan(source: "gmail" | "fireflies", account: string, sub: st
     report_rule:
       `First, once per run: list the account's ${what} and call report_ingest_candidates with all of them and ${what}_complete: true. ` +
       (sampleWanted
-        ? `This run must also send a metadata sample: list up to ${MAX_SAMPLE} items from the last ${SAMPLE_DAYS} days with the query "after:${sampleSince}" (no other filter), and pass each one's provider metadata ONLY (no subject, no text) as candidates.`
+        ? `This run must also send a metadata sample: list up to ${MAX_SAMPLE} items from the last ${SAMPLE_DAYS} days` +
+          (source === "gmail" ? ` with the query "newer_than:${SAMPLE_DAYS}d" (no other filter)` : " (no other filter)") +
+          ", and pass each one's provider metadata ONLY (no subject, no text) as candidates." +
+          (source === "gmail"
+            ? " The search result alone lacks label ids and dates: read each listed message's metadata with the connector's get_message (or get_thread) first."
+            : "")
         : "No metadata sample is wanted this run."),
     sample_wanted: sampleWanted,
     scope: scopeFor(source),
@@ -235,6 +257,30 @@ export const reportCandidatesSchema = z
   })
   .strict();
 
+/** Gmail's own labels: the database skips these on purpose (migration 0063); rules use only the person's labels. */
+const GMAIL_SYSTEM_LABELS = new Set([
+  "INBOX", "SENT", "DRAFT", "SPAM", "TRASH", "UNREAD", "STARRED", "IMPORTANT",
+  "CHAT", "SNOOZED", "SCHEDULED", "YELLOW_STAR", "OPENED", "MUTED",
+]);
+
+export const isGmailSystemLabel = (id: string): boolean => {
+  const v = id.trim().toUpperCase();
+  return GMAIL_SYSTEM_LABELS.has(v) || v.startsWith("CATEGORY_");
+};
+
+/** Counts for the reply, so "26 sent, 13 stored" is explained, not a mystery. */
+function labelCounts(labels: readonly { id: string }[], stored: number) {
+  const ids = [...new Set(labels.map((l) => l.id.trim()))];
+  const system = ids.filter(isGmailSystemLabel).length;
+  const own = ids.length - system;
+  const skipped = system > 0 ? `${system} Gmail system labels (INBOX, SENT, UNREAD, CATEGORY_* and the like) were skipped on purpose: rules use only your own labels. ` : "";
+  const stores =
+    stored >= own
+      ? `All ${own} of your own labels are stored.`
+      : `Only ${stored} of your ${own} own labels were stored; check the missing ones have an id and a name under 200 characters.`;
+  return { labels_sent: labels.length, system_labels_skipped: system, note: skipped + stores };
+}
+
 export const reportCandidatesTool: ToolSpec = {
   name: "report_ingest_candidates",
   description:
@@ -256,6 +302,9 @@ export const reportCandidatesTool: ToolSpec = {
       },
       "The report could not be recorded",
     )) as Record<string, unknown> | null;
-    return { labels: Number(data?.["labels"] ?? 0), candidates: Number(data?.["candidates"] ?? 0) };
+    const stored = Number(data?.["labels"] ?? 0);
+    const candidates = Number(data?.["candidates"] ?? 0);
+    if (p.source !== "gmail" || labels === undefined) return { labels: stored, candidates };
+    return { labels: stored, candidates, ...labelCounts(labels, stored) };
   },
 };

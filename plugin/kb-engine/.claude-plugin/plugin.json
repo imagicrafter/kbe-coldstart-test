@@ -1,7 +1,7 @@
 {
   "name": "kb-engine",
   "displayName": "Quantabase",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Quantabase: feed your own knowledge Engine from Claude: a mechanical ingest skill that copies new Gmail messages, Drive files, Fireflies meetings and Calendar events into your Engine unchanged (your Engine keeps only what your own inclusion rules include), and a setup skill that schedules one ingest task per source on the smallest model. Curation happens on the Engine, not in Claude.",
   "author": {
     "name": "imagicrafter.ai",

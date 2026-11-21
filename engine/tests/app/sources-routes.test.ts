@@ -72,11 +72,40 @@ describe("Sources: the rule list", () => {
     expect(html).not.toMatch(/<script/i);
   });
 
+  it("lays out the rule builder on the left and the ordered rules on the right", async () => {
+    const w = world();
+    const html = await (await w.http.get(base, ASSERT.reader)).text();
+    const left = html.indexOf('class="rules-builder"');
+    const right = html.indexOf('class="rules-list"');
+    expect(html).toContain('class="rules-split"');
+    expect(left).toBeGreaterThan(-1);
+    expect(right).toBeGreaterThan(left);
+    expect(html.indexOf("Add a rule")).toBeGreaterThan(left);
+    expect(html.indexOf("Add a rule")).toBeLessThan(right);
+  });
+
+  it("saving stays on the same screen: the new rule shows on the right, the version as a small note", async () => {
+    const w = world();
+    const csrf = await csrfOf(w);
+    const res = await w.http.post(`${base}/rules`, { csrf, op: "add", version: "1", kind: "exclude", name: "Personal", label: ["Label_9"] }, ASSERT.reader);
+    const html = await (await w.http.get(res.headers.get("location")!, ASSERT.reader)).text();
+    expect(shown(html)).not.toContain("Rules saved");
+    expect(html).toMatch(/class="hint saved-note"[^>]*>Saved\. Version 2 is in force\./);
+    expect(html.slice(html.indexOf('class="rules-list"'))).toContain("Personal");
+  });
+
+  it("ignores a saved note that is not a version number", async () => {
+    const w = world();
+    const html = await (await w.http.get(`${base}?saved=%3Cb%3E`, ASSERT.reader)).text();
+    expect(html).not.toContain("saved-note");
+  });
+
   it("an exclude applies at once (it only narrows)", async () => {
     const w = world();
     const csrf = await csrfOf(w);
     const res = await w.http.post(`${base}/rules`, { csrf, op: "add", version: "1", kind: "exclude", name: "Personal", label: ["Label_9"] }, ASSERT.reader);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`${base}?saved=2`);
     const saved = w.fake.state.savedRules[0]!;
     expect(saved.expected).toBe(1);
     expect(saved.rules).toHaveLength(2);
@@ -101,7 +130,8 @@ describe("Sources: the rule list", () => {
     expect(w.fake.state.savedRules).toHaveLength(0);
     const rules = /name="rules" value="([^"]*)"/.exec(html)?.[1] ?? "";
     const confirm = await w.http.post(`${base}/rules`, { csrf: csrfIn(html), op: "confirm", version: "1", rules: rules.replace(/&quot;/g, '"').replace(/&#64;/g, "@").replace(/&amp;/g, "&") }, ASSERT.reader);
-    expect(confirm.status).toBe(200);
+    expect(confirm.status).toBe(303);
+    expect(confirm.headers.get("location")).toBe(`${base}?saved=2`);
     const saved = w.fake.state.savedRules[0]!.rules as Array<Record<string, unknown>>;
     expect(saved[1]).toMatchObject({ kind: "include", topic: "board", match: { from: ["chair@board.example"], labels: [{ id: "Label_1" }] } });
   });

@@ -65,8 +65,9 @@ describe("get_ingest_plan: Gmail and Fireflies use the caller's rules", () => {
   it("returns a Gmail query narrowed by the rules: OR of includes, minus excludes, after since", async () => {
     rpcMock.mockResolvedValue({ data: rulesPlanRow(), error: null });
     const out = (await plan().run({ source: "gmail", account: "ann@work.example" }, CTX)) as Record<string, unknown>;
-    const since = Math.floor(Date.parse("2026-11-18T09:30:00Z") / 1000);
-    expect(out["query"]).toBe(`((from:acme.com OR to:acme.com OR cc:acme.com) OR label:board-pack) -label:personal after:${since}`);
+    expect(out["query"]).toBe("((from:acme.com OR to:acme.com OR cc:acme.com) OR label:board-pack) -label:personal after:2026/11/17");
+    expect(out["fallback_query"]).toBe("((from:acme.com OR to:acme.com OR cc:acme.com) OR label:board-pack) -label:personal newer_than:3d");
+    expect(String(out["fallback_rule"])).toMatch(/listed 0/);
     expect(out["nothing_to_record"]).toBe(false);
     expect(out["rules_version"]).toBe(3);
     expect(out["account"]).toBe("ann@work.example");
@@ -96,6 +97,9 @@ describe("get_ingest_plan: Gmail and Fireflies use the caller's rules", () => {
     const out = (await plan().run({ source: "gmail", account: "ann@work.example" }, CTX)) as Record<string, unknown>;
     expect(out["sample_wanted"]).toBe(true);
     expect(String(out["report_rule"])).toMatch(/metadata ONLY \(no subject, no text\)/);
+    expect(String(out["report_rule"])).toMatch(/"newer_than:7d"/);
+    expect(String(out["report_rule"])).not.toMatch(/after:\d{6,}/);
+    expect(String(out["report_rule"])).toMatch(/get_message|get_thread/);
     expect(out["report_with"]).toBe("report_ingest_candidates");
   });
 
@@ -200,7 +204,41 @@ describe("report_ingest_candidates", () => {
     expect(args.p_account).toBe("ann@work.example");
     expect(args.p_complete).toBe(true);
     expect(args.p_labels).toHaveLength(2);
-    expect(out).toEqual({ labels: 2, candidates: 1 });
+    expect(out).toMatchObject({ labels: 2, candidates: 1, labels_sent: 2, system_labels_skipped: 0 });
+  });
+
+  it("says plainly that Gmail's own system labels are skipped on purpose, and counts them", async () => {
+    rpcMock.mockResolvedValue({ data: { labels: 2, candidates: 0 }, error: null });
+    const out = (await tool("report_ingest_candidates").run(
+      {
+        source: "gmail",
+        account: "ann@work.example",
+        labels: [
+          { id: "INBOX", name: "INBOX" },
+          { id: "SENT", name: "SENT" },
+          { id: "UNREAD", name: "UNREAD" },
+          { id: "CATEGORY_PROMOTIONS", name: "CATEGORY_PROMOTIONS" },
+          { id: "Label_1", name: "Clients" },
+          { id: "Label_2", name: "Quantabase-test" },
+        ],
+        labels_complete: true,
+      },
+      CTX,
+    )) as Record<string, unknown>;
+    expect(out["labels_sent"]).toBe(6);
+    expect(out["system_labels_skipped"]).toBe(4);
+    expect(out["labels"]).toBe(2);
+    expect(String(out["note"])).toMatch(/system labels .* skipped on purpose/i);
+    expect(String(out["note"])).toMatch(/all 2 of your own labels are stored/i);
+  });
+
+  it("flags it when fewer of the person's own labels were stored than sent", async () => {
+    rpcMock.mockResolvedValue({ data: { labels: 1, candidates: 0 }, error: null });
+    const out = (await tool("report_ingest_candidates").run(
+      { source: "gmail", account: "ann@work.example", labels: [{ id: "Label_1", name: "A" }, { id: "Label_2", name: "B" }], labels_complete: true },
+      CTX,
+    )) as Record<string, unknown>;
+    expect(String(out["note"])).toMatch(/1 of your 2 own labels/i);
   });
 
   it("refuses a subject, body or any text in a candidate", async () => {

@@ -86,8 +86,8 @@ export function rulesCard(row: Row, csrf: string): string {
   const base = `/app/sources/${String(row["account_id"])}`;
   const body = rules.length
     ? `<table><thead><tr><th>#</th><th>Rule</th><th>Files under</th><th></th></tr></thead><tbody>${rules.map((r, i) => ruleRow(r, i, rules.length - 1, base, csrf, version, topics)).join("")}</tbody></table>`
-    : "<p>No rules yet: nothing from this account is kept. Add a rule below.</p>";
-  return card(`<h2>Rules (version ${esc(version)})</h2>
+    : "<p>No rules yet: nothing from this account is kept. Add one with the builder.</p>";
+  return card(`<h2>Rules, in order</h2><p class="hint">Version ${esc(version)}</p>
 <p class="hint">Exclude rules are checked first and always win. Then include rules are tried from the top; the first that matches decides the topic. Within a rule every field must match; within a field any value may. Anything no rule includes is left out and not kept.</p>${body}`);
 }
 
