@@ -1,3 +1,5 @@
+import { doDomainCard } from "../setup/page-plan.js";
+import type { HostReach } from "./host-check.js";
 import { Hono, type Context } from "hono";
 import { loadTemplates, TEMPLATE_NAMES } from "../entities/templates.js";
 import { logger } from "../log/logger.js";
@@ -6,6 +8,7 @@ import { isEmail } from "../setup/inputs.js";
 import { readForm, requireAdmin, storeFailure, type Allowed, type ScreenDeps } from "./guard.js";
 import { appLayout, card, esc, hidden, notice, postForm, sendMessage, sendPage, when } from "./html.js";
 import type { Row } from "./store.js";
+import { roleLabel, setChrome } from "./chrome.js";
 
 /**
  * The setup screens that come after sign-in, for administrators only (the
@@ -25,6 +28,8 @@ import type { Row } from "./store.js";
 export type SettingsDeps = ScreenDeps & {
   /** True when the embed function answers with a vector. */
   readonly embedCheck: () => Promise<boolean>;
+  /** Whether https://<host> reaches this app (host-check.ts). Absent: not checked. */
+  readonly hostCheck?: (host: string) => Promise<HostReach>;
 };
 
 export type Handler = (c: Context, me: Allowed, deps: SettingsDeps) => Promise<Response>;
@@ -36,6 +41,13 @@ export function admin(use: () => SettingsDeps, handler: Handler) {
     const me = await requireAdmin(c, deps);
     if (!me.ok) return me.response;
     try {
+      let who: Row | null = null;
+      try {
+        who = await deps.store.whoami(me.email);
+      } catch {
+        // The menu then just says administrator.
+      }
+      setChrome(c, { email: me.email, role: roleLabel(who, "administrator"), isAdmin: true });
       return await handler(c, me, deps);
     } catch (err) {
       if (isMcpAppError(err) && err.code !== "internal_error") {
@@ -150,7 +162,10 @@ const template: Handler = async (c, me, deps) => {
   const boxes = CHOOSABLE.map((name) => {
     const t = all.get(name);
     const drawers = (t?.drawers ?? []).map((d) => d.label).join(", ");
-    return `<label><input type="checkbox" name="template" value="${esc(name)}"${chosen.has(name) ? " checked" : ""}> <strong>${esc(t?.label ?? name)}</strong>: ${esc(t?.description ?? "")} <span class="hint">Adds: ${esc(drawers)}</span></label>`;
+    const adds = drawers
+      ? `Adds: ${esc(drawers)}`
+      : `Uses the ${all.get("base")?.drawers.length ?? 8} base drawers; adds no extra drawers.`;
+    return `<label><input type="checkbox" name="template" value="${esc(name)}"${chosen.has(name) ? " checked" : ""}> <strong>${esc(t?.label ?? name)}</strong>: ${esc(t?.description ?? "")} <span class="hint">${adds}</span></label>`;
   }).join("");
   const base = (all.get("base")?.drawers ?? []).map((d) => d.label).join(", ");
   const body = card(`<p>Every Engine files pages in the basic drawers: ${esc(base)}. Pick the kinds of business this Engine is for; each adds its own drawers. The curator, get_entity_schema and save_page all use this choice.</p>
@@ -200,8 +215,6 @@ const saveModel: Handler = async (c, me, deps) => {
 
 // ── timer ───────────────────────────────────────────────────────────────────
 
-const EVERY = [5, 15, 60] as const;
-
 function testVerdict(result: Row | null): string {
   if (!result) return "No answer recorded yet. Open this page again in a few seconds.";
   const code = Number(result["status_code"]);
@@ -222,22 +235,18 @@ const timer: Handler = async (c, me, deps) => {
   const csrf = deps.csrf.token(me.email, "timer");
   const testId = c.req.query("test");
   const test = testId && /^\d{1,18}$/.test(testId) ? notice("ok", testVerdict(await deps.store.timerResult(me.email, Number(testId)))) : "";
-  const every = (() => {
-    const m = /^\*\/(\d+) /.exec(String(job["schedule"] ?? ""));
-    return m ? Number(m[1]) : job["schedule"] === "0 * * * *" ? 60 : 5;
-  })();
-  const body = test + card(`<p>Supabase cron pokes the service at <code>/internal/curator/tick</code>; the service then runs the curator and its chores. The poke carries a secret that is made inside the database and never leaves it.</p>
+  const body = test + card(`<p>The curator wakes when new items arrive (at most once every 2 minutes), and runs once every hour as a safety net for retries, summaries and the nightly backup. An hour with nothing waiting costs no model tokens.</p>
+<p>Supabase pokes the service at this address; the poke carries a secret that is made inside the database and never leaves it:</p>
+<p><code class="address">${esc(url)}</code></p>
 <table><tbody>
 <tr><td>pg_cron / pg_net / Vault</td><td>${yes(t["cron_available"])} / ${yes(t["net_available"])} / ${yes(t["vault_available"])}</td></tr>
-<tr><td>Timer job</td><td>${job["schedule"] ? `${esc(job["schedule"])}${job["active"] ? "" : " (paused)"}` : "none"}</td></tr>
+<tr><td>Hourly safety tick</td><td>${job["schedule"] ? `on${job["active"] ? "" : " (paused)"}` : "off"}</td></tr>
+<tr><td>Last woken by new items</td><td>${esc(when(t["last_wake_at"])) || "not yet"}</td></tr>
 <tr><td>Curator on</td><td>${yes(t["enabled"])}</td></tr>
 <tr><td>Timer secret made</td><td>${yes(t["tick_secret_set"])}</td></tr>
 <tr><td>Last run</td><td>${last["status"] ? `${esc(last["status"])}, ${esc(when(last["started_at"]))}` : "never"}</td></tr>
 </tbody></table>`) +
-    card(postForm("/setup/timer", csrf, `<label for="engine_url">Address the timer pokes</label>
-<input type="url" id="engine_url" name="engine_url" value="${esc(url)}" readonly>
-<label for="every">Every</label><select id="every" name="every">${EVERY.map((m) => `<option value="${m}"${m === every ? " selected" : ""}>${m} minutes</option>`).join("")}</select>
-<label><input type="checkbox" name="enabled" value="yes"${t["enabled"] ? " checked" : ""}> Curator on</label>`, "Save the timer")) +
+    card(postForm("/setup/timer", csrf, `<label><input type="checkbox" name="enabled" value="yes"${t["enabled"] ? " checked" : ""}> Curator on</label>`, "Save")) +
     card(`${postForm("/setup/timer/test", csrf, "", "Test the timer now")}<p class="hint">Cloudflare sign-in sits in front of every path of this app. The sign-in setup adds a bypass for <code>/internal/curator/tick</code> only, which is guarded by the timer secret instead. An Engine whose sign-in was set up before this screen existed needs the sign-in setup run once more.</p>`);
   return page(c, "/setup/timer", "Timer", body);
 };
@@ -249,14 +258,13 @@ const saveTimer: Handler = async (c, me, deps) => {
   // host); the database checks the same against its stored host.
   const own = `https://${me.access.host}/internal/curator/tick`;
   const url = (sent.form["engine_url"] ?? own).trim();
-  const every = Number(sent.form["every"]);
-  if (url !== own || !(EVERY as readonly number[]).includes(every)) {
-    return page(c, "/setup/timer", "Not saved", notice("error", `The timer only calls ${own}, every 5, 15 or 60 minutes.`), 400);
+  if (url !== own) {
+    return page(c, "/setup/timer", "Not saved", notice("error", `The timer only calls ${own}.`), 400);
   }
   const enabled = sent.form["enabled"] === "yes";
-  await deps.store.setTimer(me.email, me.access.host, every, enabled);
-  logger.info({ every, enabled }, "app: timer saved");
-  return sendMessage(c, "setup", 200, "Timer saved", enabled ? `The curator runs every ${every} minutes.` : "The timer is off.");
+  await deps.store.setTimer(me.email, me.access.host, enabled);
+  logger.info({ enabled }, "app: timer saved");
+  return sendMessage(c, "setup", 200, "Timer saved", enabled ? "The curator is on: it runs when new items arrive (at most every 2 minutes) and every hour." : "The curator is off.");
 };
 
 const testTimer: Handler = async (c, me, deps) => {
@@ -277,21 +285,26 @@ const health: Handler = async (c, me, deps) => {
   } catch {
     embedOk = false;
   }
+  const reach: HostReach = deps.hostCheck
+    ? await deps.hostCheck(me.access.host).catch(() => ({ ok: false, detail: "The check failed." }))
+    : { ok: true, detail: "not checked" };
   const timer = object(h["timer"]);
   const migrations = object(h["migrations"]);
   const checks: Array<[string, boolean, string]> = [
     ["Database tables", Number(migrations["count"] ?? 0) > 0, `${esc(migrations["count"] ?? 0)} migrations, latest ${esc(migrations["latest"] ?? "none")}`],
     ["An owner", Number(h["administrators"] ?? 0) > 0, `${esc(h["administrators"] ?? 0)} administrator(s), ${esc(h["people"] ?? 0)} people`],
     ["Sign-in", true, `Cloudflare sign-in for ${esc(me.access.host)}`],
+    ["Hostname reaches the app", reach.ok, esc(reach.detail)],
     ["Topics", Number(h["topics"] ?? 0) > 0, `${esc(h["topics"] ?? 0)} topics`],
     ["Template", true, `base${list(h["templates"]).map((t) => `, ${esc(t)}`).join("")}`],
     ["Embedding", embedOk, embedOk ? "the embed function answers" : "the embed function did not answer"],
     ["Model key", h["has_model_key"] === true, h["has_model_key"] ? "stored in Vault" : "not set: the curator cannot run"],
-    ["Timer", !!object(timer["job"])["schedule"] && timer["enabled"] === true, object(timer["job"])["schedule"] ? `every ${esc(object(timer["job"])["schedule"])}` : "no timer job"],
+    ["Timer", !!object(timer["job"])["schedule"] && timer["enabled"] === true, object(timer["job"])["schedule"] ? "on: new items and every hour" : "off"],
   ];
   const rows = checks.map(([name, ok, text]) => `<tr><td>${ok ? "OK" : "Needs work"}</td><td>${esc(name)}</td><td>${text}</td></tr>`).join("");
   const body = card(`<table><thead><tr><th></th><th>Check</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
 <p>Waiting for a yes: ${esc(h["pending_reviews"] ?? 0)} · flagged: ${esc(h["flagged"] ?? 0)}</p>`) +
+    (reach.ok ? "" : doDomainCard(me.access.host)) +
     card(`<h2>Connect Claude</h2><p>Add a custom connector in Claude with this address:</p><pre>${esc(me.access.resourceUrl)}</pre><p>People open their own pages, changes waiting for a yes and flagged items at <a href="/app">/app</a>.</p>`);
   return page(c, "/setup/health", "Health", body);
 };

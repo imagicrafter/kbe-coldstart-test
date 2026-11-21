@@ -140,7 +140,7 @@ describe("pages and the edit box", () => {
   it("lists and opens the person's page with an edit form carrying its hash", async () => {
     const w = world();
     expect(await (await w.http.get("/app/pages?q=acme", ASSERT.reader)).text()).toContain(`/app/pages/${PAGE_ID}`);
-    const html = await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text();
+    const html = await (await w.http.get(`/app/pages/${PAGE_ID}/edit`, ASSERT.reader)).text();
     expect(html).toContain("Acme &lt;Corp&gt;");
     expect(html).toContain(`name="expected_hash" value="${H64("a")}"`);
     expect(html).toContain("<textarea");
@@ -148,7 +148,7 @@ describe("pages and the edit box", () => {
 
   it("saves through the same write path with the hash, keeping the header", async () => {
     const w = world();
-    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text());
+    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}/edit`, ASSERT.reader)).text());
     const res = await w.http.post(`/app/pages/${PAGE_ID}`, { csrf, expected_hash: H64("a"), title: "Acme", description: "", body: "new text\r\nline" }, ASSERT.reader);
     expect(res.status).toBe(200);
     const call = w.fake.calls.find((c) => c.fn === "savePage");
@@ -161,7 +161,7 @@ describe("pages and the edit box", () => {
 
   it("refuses an edit made on an older copy, and gives the text back", async () => {
     const w = world();
-    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text());
+    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}/edit`, ASSERT.reader)).text());
     const res = await w.http.post(`/app/pages/${PAGE_ID}`, { csrf, expected_hash: H64("9"), title: "Acme", body: "mine <b>" }, ASSERT.reader);
     expect(res.status).toBe(409);
     expect(await res.text()).toContain("mine &lt;b&gt;");

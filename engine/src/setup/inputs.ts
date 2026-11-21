@@ -16,6 +16,21 @@ export { isSharedDomain } from "./shared-domains.js";
 export const LEVELS = ["owner", "people", "domain"] as const;
 export type Level = (typeof LEVELS)[number];
 
+/**
+ * How long a sign-in to the Engine (and Claude's connector) lasts. Offered on
+ * the form; 1 year by default (Justin, 2026-11-20, like KW-Engine). The admin
+ * pages (/status, /setup) are a separate application, always 12h plus a
+ * second factor (plan.ts).
+ */
+export const SESSIONS = ["24h", "720h", "8760h"] as const;
+export type SessionLength = (typeof SESSIONS)[number];
+export const DEFAULT_SESSION: SessionLength = "8760h";
+export const SESSION_NAMES: Readonly<Record<SessionLength, string>> = {
+  "24h": "1 day",
+  "720h": "30 days",
+  "8760h": "1 year",
+};
+
 export const MAX_EMAILS = 50;
 export const MAX_DOMAINS = 10;
 /** A preview is good for this long; after that the form must be sent again. */
@@ -55,6 +70,8 @@ export const SetupInputsSchema = z
     domains: z.array(Hostname).max(MAX_DOMAINS),
     /** Take over a DNS record or application that is already there. */
     replaceExisting: z.boolean(),
+    /** The main sign-in length; absent means DEFAULT_SESSION. */
+    session: z.enum(SESSIONS).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -99,6 +116,8 @@ export type FormValues = {
   readonly emails: string;
   readonly domains: string;
   readonly replace: boolean;
+  /** The chosen sign-in length; "" means the default. */
+  readonly session?: string;
 };
 
 /** What the page already knows, which the form may not override. */
@@ -132,6 +151,7 @@ export function formValues(
     emails: text(form["emails"], 8000),
     domains: text(form["domains"], 4000),
     replace: form["replace"] === "yes",
+    session: text(form["session"], 10),
   };
 }
 
@@ -152,6 +172,7 @@ export function echoableValues(v: FormValues): FormValues {
     emails: keep(v.emails, isEmail),
     domains: keep(v.domains, isHostname),
     replace: v.replace,
+    session: SESSIONS.includes(v.session as SessionLength) ? v.session : "",
   };
 }
 
@@ -199,6 +220,9 @@ function fieldProblems(v: FormValues, owner: string): readonly string[] {
         ]),
     ...(LEVELS.includes(v.level as Level) ? [] : ["Choose an access level."]),
     ...(isEmail(owner) ? [] : ["The owner email is not valid."]),
+    ...(!v.session || SESSIONS.includes(v.session as SessionLength)
+      ? []
+      : ["Choose a sign-in length from the list."]),
     ...listProblems(v, v.level),
   ];
 }
@@ -229,6 +253,7 @@ export function parseSetupForm(
       level === "people" ? splitList(v.emails).filter((e) => e !== owner) : [],
     domains: level === "domain" ? [...splitList(v.domains)] : [],
     replaceExisting: v.replace,
+    session: (v.session || DEFAULT_SESSION) as SessionLength,
   };
   const parsed = SetupInputsSchema.safeParse(candidate);
   return parsed.success

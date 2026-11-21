@@ -42,12 +42,22 @@ export type FirstRunRouteDeps = {
   readonly files: () => SqlFiles | null;
   readonly fetch: FetchLike;
   readonly onDatabaseReady: () => void;
+  /**
+   * After a restart (boot-code.ts, "surviving a restart"): ask the database
+   * whether this code is the claim it holds. Wrong codes count toward the
+   * database's lockout (0034). Absent means a resumed claim cannot be taken.
+   */
+  readonly confirmHeld?: (code: string) => Promise<HeldVerdict>;
 };
+
+export type HeldVerdict =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly locked: boolean; readonly retryAfterSeconds: number };
 
 const secure = (c: Context) => (c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "")) === "https";
 
 function active(deps: FirstRunRouteDeps): boolean {
-  return !deps.envCode && deps.boot().original() !== undefined;
+  return !deps.envCode && (deps.boot().original() !== undefined || deps.boot().resumable());
 }
 
 /** These screens exist only while the Engine is new. Unknown means no. */
@@ -93,7 +103,7 @@ function claimPage(c: Context, status: 200 | 401 | 409 | 429, problem?: string):
 <input type="password" id="code" name="code" autocomplete="one-time-code" required maxlength="256">
 <p><button type="submit">Claim this Engine</button></p>
 </form>
-<p class="hint">The code works once. Restarting the app before setup is finished makes a new one.</p>`);
+<p class="hint">The code works once. After the Database screen has run, the database keeps this claim: a restart keeps the same code and your open setup page.</p>`);
   return page(c, status, "Claim this Engine", body);
 }
 
@@ -107,6 +117,48 @@ function claimRefusal(c: Context, reason: "none" | "spent" | "locked" | "wrong",
     default:
       return claimPage(c, 401, "That is not the code.");
   }
+}
+
+/** Resumed after a restart: the database, not this process, checks the code. */
+async function resumeClaim(c: Context, deps: FirstRunRouteDeps, code: unknown): Promise<Response> {
+  const given = typeof code === "string" ? code.trim() : "";
+  if (!deps.confirmHeld || given.length === 0 || given.length > 256) return claimRefusal(c, "wrong", 0);
+  let verdict: HeldVerdict;
+  try {
+    verdict = await deps.confirmHeld(given);
+  } catch {
+    return sendMessage(c, "setup", 503, "Setup is unavailable", "The Engine's database did not answer. Try again in a minute.");
+  }
+  if (!verdict.ok) {
+    logger.warn({ locked: verdict.locked }, "first run: resumed claim refused");
+    return claimRefusal(c, verdict.locked ? "locked" : "wrong", verdict.retryAfterSeconds);
+  }
+  const cookie = deps.boot().adopt(given);
+  if (!cookie) return claimRefusal(c, "spent", 0);
+  logger.info("first run: claim resumed after a restart");
+  c.header("Set-Cookie", claimCookie(cookie, secure(c)));
+  return c.redirect("/setup/database", 303);
+}
+
+/** A cookie from before the restart: the database confirms the code it carries. */
+async function resumeFromCookie(c: Context, deps: FirstRunRouteDeps): Promise<boolean> {
+  const code = deps.boot().cookieCode(readCookie(c.req.header("cookie"), CLAIM_COOKIE));
+  if (!code || !deps.confirmHeld) return false;
+  try {
+    const verdict = await deps.confirmHeld(code);
+    if (!verdict.ok) return false;
+  } catch {
+    return false;
+  }
+  const cookie = deps.boot().adopt(code);
+  if (!cookie) return false;
+  logger.info("first run: claim resumed from the browser's claim cookie");
+  c.header("Set-Cookie", claimCookie(cookie, secure(c)));
+  return true;
+}
+
+function claimWith(c: Context, deps: FirstRunRouteDeps, code: unknown): Response | Promise<Response> {
+  return deps.boot().resumable() ? resumeClaim(c, deps, code) : doClaim(c, deps, code);
 }
 
 function doClaim(c: Context, deps: FirstRunRouteDeps, code: unknown): Response {
@@ -138,9 +190,10 @@ export function firstRunGate(use: () => FirstRunRouteDeps): MiddlewareHandler {
     const path = c.req.path;
     if (path === "/setup/claim" || path.startsWith("/setup/assets/")) return next();
     const code = c.req.method === "GET" && path === "/setup" ? c.req.query("code") : undefined;
-    if (code !== undefined) return doClaim(c, deps, code);
+    if (code !== undefined) return claimWith(c, deps, code);
 
-    if (!session(c, deps)) {
+    const resumed = deps.boot().resumable() && (await resumeFromCookie(c, deps));
+    if (!resumed && !session(c, deps)) {
       return c.req.method === "GET" ? claimPage(c, 200) : sendMessage(c, "setup", 401, "Claim this Engine first", "Open /setup with the one-time code from the app's log.");
     }
     if (path === "/setup/database") return next();
@@ -292,7 +345,7 @@ export function makeFirstRunRoutes(use: () => FirstRunRouteDeps): Hono {
     if (!(await stillNew(deps))) return sendMessage(c, "setup", 404, "Not here", "This Engine does not use a first-run code.");
     if (!sameSite(c) || !isFormPost(c)) return sendMessage(c, "setup", 403, "Not accepted", "Send this form from the page itself.");
     const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
-    return doClaim(c, deps, (form as Record<string, unknown>)["code"]);
+    return claimWith(c, deps, (form as Record<string, unknown>)["code"]);
   });
   app.get("/database", getDatabase(use));
   app.post("/database", postDatabase(use));

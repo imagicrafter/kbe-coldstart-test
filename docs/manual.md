@@ -257,8 +257,13 @@ For each item not yet curated, oldest first:
 3. **Ask.** The model gets the shortlist and the item. The item's text is
    inside a delimited block marked as quoted data. The answer is small
    patches (`append-bullet`, `append-paragraph`, `replace-line`,
-   `new-section-after`), field values and at most one new page. Every added
-   line starts with the item's date and says why.
+   `new-section-after`), field values, links (`related`) and new pages.
+   One item is filed on every entity it is really about, not just one: the
+   person (key = email), their organisation (key = domain), and the project
+   and/or deal, each matched by key first, updated with dated lines and
+   linked to each other (at most 6 updates and 4 new pages per item). A link
+   may only point at a page on the shortlist or one made in the same reply.
+   Every added line starts with the item's date and says why.
 4. **Check.** Anything outside that shape is refused and the item is tried
    again later (three tries by default): an unknown page or field, a value
    not allowed by the drawer, an undated line, a patch that does not apply,

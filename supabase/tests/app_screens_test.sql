@@ -65,10 +65,10 @@ begin
     assert not has_function_privilege('anon', 'workspace.app_secret_set(text, text, text)', 'execute'), 'anon app_secret_set';
     assert not has_function_privilege('authenticated', 'workspace.app_secret_set(text, text, text)', 'execute'), 'authenticated app_secret_set';
     assert not has_function_privilege('kb_ingest', 'workspace.app_secret_set(text, text, text)', 'execute'), 'kb_ingest app_secret_set';
-    assert has_function_privilege('kb_engine', 'workspace.app_timer_set(text, text, integer, boolean)', 'execute'), 'kb_engine app_timer_set';
-    assert not has_function_privilege('anon', 'workspace.app_timer_set(text, text, integer, boolean)', 'execute'), 'anon app_timer_set';
-    assert not has_function_privilege('authenticated', 'workspace.app_timer_set(text, text, integer, boolean)', 'execute'), 'authenticated app_timer_set';
-    assert not has_function_privilege('kb_ingest', 'workspace.app_timer_set(text, text, integer, boolean)', 'execute'), 'kb_ingest app_timer_set';
+    assert has_function_privilege('kb_engine', 'workspace.app_timer_set(text, text, boolean)', 'execute'), 'kb_engine app_timer_set';
+    assert not has_function_privilege('anon', 'workspace.app_timer_set(text, text, boolean)', 'execute'), 'anon app_timer_set';
+    assert not has_function_privilege('authenticated', 'workspace.app_timer_set(text, text, boolean)', 'execute'), 'authenticated app_timer_set';
+    assert not has_function_privilege('kb_ingest', 'workspace.app_timer_set(text, text, boolean)', 'execute'), 'kb_ingest app_timer_set';
     assert has_function_privilege('kb_engine', 'workspace.app_health(text)', 'execute'), 'kb_engine app_health';
     assert not has_function_privilege('anon', 'workspace.app_health(text)', 'execute'), 'anon app_health';
     assert not has_function_privilege('authenticated', 'workspace.app_health(text)', 'execute'), 'authenticated app_health';
@@ -143,15 +143,16 @@ begin
     assert pg_temp.raises($q$select workspace.app_secret_set('as-boss@example.com', 'kbe_model_key', 'short')$q$, '22023');
     assert pg_temp.raises($q$select workspace.app_secret_set('as-boss@example.com', 'kbe_model_key', 'has a space in it')$q$, '22023');
 
-    -- Timer: bad address and bad interval refused.
+    -- Timer: bad address refused; there is no interval to choose (0057).
     -- No stored Engine host yet: refused. Then only the stored host is taken,
     -- and the address is built inside the database.
-    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'x.example.com', 15, false)$q$, '22023');
+    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'x.example.com', false)$q$, '22023');
     update workspace.engine_settings set access = coalesce(access, '{}'::jsonb) || '{"host":"x.example.com"}'::jsonb where id;
-    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'evil.example.net', 5, false)$q$, '22023'), 'foreign host';
-    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'https://x.example.com/internal/curator/tick', 5, false)$q$, '22023'), 'url not host';
-    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'x.example.com', 7, false)$q$, '22023');
-    v := workspace.app_timer_set('as-boss@example.com', 'X.Example.com', 15, false);
+    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'evil.example.net', false)$q$, '22023'), 'foreign host';
+    assert pg_temp.raises($q$select workspace.app_timer_set('as-boss@example.com', 'https://x.example.com/internal/curator/tick', false)$q$, '22023'), 'url not host';
+    assert to_regprocedure('workspace.app_timer_set(text, text, integer, boolean)') is null, 'interval version gone';
+    v := workspace.app_timer_set('as-boss@example.com', 'X.Example.com', false);
+    assert (v->>'wake_on_new_items')::boolean, 'new items wake the curator';
     assert v->>'engine_url' = 'https://x.example.com/internal/curator/tick', 'address stored';
     assert (v->>'enabled')::boolean is false, 'off';
 
@@ -192,22 +193,33 @@ begin
     if to_regclass('vault.secrets') is null then
         return;
     end if;
-    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', 5, true);
-    assert v->'job'->>'schedule' = '*/5 * * * *', 'job scheduled: ' || coalesce(v::text, 'null');
+    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', true);
+    assert v->'job'->>'schedule' = '0 * * * *', 'hourly safety tick: ' || coalesce(v::text, 'null');
+    assert v->'wake_job'->>'schedule' = '* * * * *', 'minute wake check';
+    assert (select command from cron.job where jobname = 'kbe-curator-wake') like '%curator_wake(true)%', 'wake command';
     assert (v->>'tick_secret_set')::boolean, 'tick secret made in the database';
     assert (select command from cron.job where jobname = 'kbe-curator-tick') like '%curator_tick_poke()%', 'command';
     assert (select command from cron.job where jobname = 'kbe-curator-tick')
         not like '%' || workspace._curator_vault_secret('kbe_tick_secret') || '%', 'secret not in the command';
     assert length(workspace._curator_vault_secret('kbe_tick_secret')) = 64, 'secret length';
     -- Saving again replaces the one job, and keeps the same secret.
-    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', 60, true);
+    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', true);
     assert (select count(*) from cron.job where jobname = 'kbe-curator-tick') = 1, 'one job';
+    assert (select count(*) from cron.job where jobname = 'kbe-curator-wake') = 1, 'one wake job';
     assert v->'job'->>'schedule' = '0 * * * *', 'hourly';
     assert (select count(*) from vault.secrets where name = 'kbe_tick_secret') = 1, 'one secret';
     assert workspace.app_timer_test('as-boss@example.com') is not null, 'test poke queued';
-    -- Off removes the job.
-    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', 60, false);
-    assert not exists (select 1 from cron.job where jobname = 'kbe-curator-tick'), 'job removed';
+    -- Debounce: a wake now, then none inside 2 minutes.
+    update workspace.curator_settings set last_wake_at = null where id;
+    assert workspace.curator_wake(false) is not null, 'first wake pokes';
+    assert workspace.curator_wake(false) is null, 'second wake inside 2 minutes does not';
+    update workspace.curator_settings set last_wake_at = now() - interval '3 minutes' where id;
+    assert workspace.curator_wake(true) is null, 'trailing check: nothing new waiting, no poke';
+    -- Off removes both jobs, and a wake does nothing.
+    v := workspace.app_timer_set('as-boss@example.com', 'x.example.com', false);
+    assert not exists (select 1 from cron.job where jobname like 'kbe-curator-%'), 'jobs removed';
+    update workspace.curator_settings set last_wake_at = null where id;
+    assert workspace.curator_wake(false) is null, 'off: no wake';
 end;
 $$;
 

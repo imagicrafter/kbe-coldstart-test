@@ -102,7 +102,15 @@ describe("the form, level by level", () => {
       emails: [],
       domains: [],
       replaceExisting: false,
+      session: "8760h",
     });
+  });
+
+  it("sign-in length: 1 year unless another offered length is chosen", () => {
+    expect(good().session).toBe("8760h");
+    expect(good({ session: "24h" }).session).toBe("24h");
+    expect(good({ session: "720h" }).session).toBe("720h");
+    expect(bad({ session: "99999h" }).join(" ")).toMatch(/sign-in length/i);
   });
 
   it("replaces what is already there only when the box is ticked", () => {

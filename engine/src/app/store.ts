@@ -20,6 +20,16 @@ export type Row = Record<string, unknown>;
 
 export type SaveResult = { readonly id: string; readonly content_hash: string; readonly changed: boolean };
 
+export type DrawerQuery = {
+  readonly drawer: string;
+  readonly query: string | null;
+  readonly topic: string | null;
+  readonly sort: "title" | "key" | "updated";
+  readonly desc: boolean;
+  readonly offset: number;
+  readonly limit: number;
+};
+
 export type AppStore = {
   readonly whoami: (email: string) => Promise<Row | null>;
   readonly reviews: (email: string, status: string | null) => Promise<Row[]>;
@@ -34,6 +44,17 @@ export type AppStore = {
   readonly history: (email: string, pageId: string) => Promise<Row[]>;
   readonly version: (email: string, historyId: string) => Promise<Row | null>;
   readonly restore: (email: string, historyId: string, expectedHash: string) => Promise<SaveResult>;
+  // the Knowledge screens (0058)
+  readonly knowledgeTree: (email: string) => Promise<Row>;
+  readonly drawerPages: (email: string, q: DrawerQuery) => Promise<Row>;
+  readonly pageView: (email: string, id: string) => Promise<Row | null>;
+  readonly pageLinks: (email: string, id: string) => Promise<Row | null>;
+  readonly pin: (email: string, id: string, pin: boolean) => Promise<boolean>;
+  readonly markReviewed: (email: string, id: string) => Promise<boolean>;
+  // indexing (administrators, 0058)
+  readonly indexing: (email: string) => Promise<Row>;
+  readonly reindexPage: (email: string, id: string) => Promise<boolean>;
+  readonly rerunSummaries: (email: string) => Promise<number>;
   // settings (administrators)
   readonly templates: () => Promise<string[]>;
   readonly setTemplates: (email: string, names: readonly string[]) => Promise<string[]>;
@@ -44,7 +65,7 @@ export type AppStore = {
   readonly twoStep: (email: string, spec: TwoStepSpec) => Promise<TwoStepResult>;
   readonly setModelKey: (email: string, value: string) => Promise<void>;
   readonly timer: (email: string) => Promise<Row>;
-  readonly setTimer: (email: string, host: string, everyMinutes: number, enabled: boolean) => Promise<Row>;
+  readonly setTimer: (email: string, host: string, enabled: boolean) => Promise<Row>;
   readonly testTimer: (email: string) => Promise<number | null>;
   readonly timerResult: (email: string, id: number) => Promise<Row | null>;
   readonly health: (email: string) => Promise<Row>;
@@ -85,7 +106,7 @@ export const liveStore: AppStore = {
   flagged: async (email) => list(await rpc("app_flagged_list", { p_email: email })),
   release: async (email, id) => (await rpc("app_flagged_release", { p_email: email, p_id: id })) === true,
   discard: async (email, id) => (await rpc("app_flagged_discard", { p_email: email, p_id: id })) === true,
-  pages: async (email, query) => list(await rpc("app_pages_list", { p_email: email, p_query: query, p_limit: 200 })),
+  pages: async (email, query) => list(await rpc("app_pages_list", { p_email: email, p_query: query, p_limit: 500 })),
   page: async (email, id) => obj(await rpc("app_page_get", { p_email: email, p_id: id })),
   savePage: async (email, page, expectedHash) =>
     saved(await rpc("app_page_save", { p_email: email, p_page: page, p_expected_hash: expectedHash })),
@@ -93,6 +114,24 @@ export const liveStore: AppStore = {
   version: async (email, historyId) => obj(await rpc("app_page_version", { p_email: email, p_history_id: historyId })),
   restore: async (email, historyId, expectedHash) =>
     saved(await rpc("app_page_restore", { p_email: email, p_history_id: historyId, p_expected_hash: expectedHash })),
+  knowledgeTree: async (email) => obj(await rpc("app_knowledge_tree", { p_email: email })) ?? {},
+  drawerPages: async (email, q) =>
+    obj(
+      await rpc("app_drawer_pages", {
+        p_email: email, p_drawer: q.drawer, p_query: q.query, p_topic: q.topic,
+        p_sort: q.sort, p_desc: q.desc, p_offset: q.offset, p_limit: q.limit,
+      }),
+    ) ?? {},
+  pageView: async (email, id) => obj(await rpc("app_page_view", { p_email: email, p_id: id })),
+  pageLinks: async (email, id) => obj(await rpc("app_page_links", { p_email: email, p_id: id })),
+  pin: async (email, id, pin) => (await rpc("app_page_pin", { p_email: email, p_id: id, p_pin: pin })) === true,
+  markReviewed: async (email, id) => (await rpc("app_page_mark_reviewed", { p_email: email, p_id: id })) === true,
+  indexing: async (email) => obj(await rpc("app_indexing", { p_email: email })) ?? {},
+  reindexPage: async (email, id) => (await rpc("app_page_reindex", { p_email: email, p_id: id })) === true,
+  rerunSummaries: async (email) => {
+    const data = await rpc("app_summaries_rerun", { p_email: email });
+    return typeof data === "number" ? data : 0;
+  },
   templates: async () => {
     const data = await rpc("engine_templates_get", {});
     return Array.isArray(data) ? data.map(String) : [];
@@ -110,8 +149,8 @@ export const liveStore: AppStore = {
     await rpc("app_secret_set", { p_email: email, p_name: "kbe_model_key", p_value: value });
   },
   timer: async (email) => obj(await rpc("app_timer_get", { p_email: email })) ?? {},
-  setTimer: async (email, host, everyMinutes, enabled) =>
-    obj(await rpc("app_timer_set", { p_email: email, p_host: host, p_every_minutes: everyMinutes, p_enabled: enabled })) ?? {},
+  setTimer: async (email, host, enabled) =>
+    obj(await rpc("app_timer_set", { p_email: email, p_host: host, p_enabled: enabled })) ?? {},
   testTimer: async (email) => {
     const data = await rpc("app_timer_test", { p_email: email });
     return typeof data === "number" ? data : null;

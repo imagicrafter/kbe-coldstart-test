@@ -209,7 +209,7 @@ a second time harmless.
 Engine's one config file, `.kb-engine/engine.yaml`.
 
 ```
-python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's AI Engine" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
+python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's Knowledge Base Engine" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
 ```
 
 Run it with `--dry-run` first, then without. It builds the config from the

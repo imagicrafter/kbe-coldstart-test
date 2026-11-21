@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * The first-run claim (Phase 10 build order, Step D).
@@ -10,18 +10,24 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
  * on the Database screen.
  *
  * SINGLE USE: a claim spends the code in this process. From then on the
- * claimant carries a signed cookie (claim session), not the code. A restart
- * before setup finishes makes a new code; once an owner is stored in the
- * database, a later claim must name that same owner.
+ * claimant carries a sealed cookie (claim session), not the code.
+ *
+ * SURVIVING A RESTART (2026-11-20 cold start). Once the Database screen has
+ * run, the database holds the claim: the code's hash (engine_setup_reopen),
+ * the owner, and the wrong-code lockout (0034). A restart then does NOT make
+ * a new code: the process starts "resumable" and adopts the original code
+ * once the database confirms it, either from the claimant's cookie or from
+ * the first FIRST RUN log line typed in again (first-run-routes.ts). The
+ * cookie is AES-256-GCM sealed under a key derived from the app's JWT secret,
+ * so it outlives the process. It carries the code (needed to finish setup);
+ * it is HttpOnly, SameSite=Strict and sent to /setup only.
  *
  * LOCKOUT, per client: five wrong codes from one client (CF-Connecting-IP,
  * else the first X-Forwarded-For address) lock that client out for an hour,
  * so a stranger cannot lock the owner out. A global ceiling (100 wrong codes
  * in 15 minutes from anyone) locks claiming for everyone as a backstop. The
- * per-client table is bounded (oldest dropped first). All of it lives in this
- * process: RESTARTING THE APP RESETS EVERY LOCK (and makes a new code).
- * (The database lockout of 0034 cannot be used: on first boot the database
- * may hold no tables yet.)
+ * per-client table is bounded (oldest dropped first). These locks live in
+ * this process; a resumed claim is counted by the database's lockout instead.
  *
  * ONE INSTANCE during setup: each instance makes its own code and holds its
  * own claim. The deploy file runs one.
@@ -46,7 +52,7 @@ export type ClaimSession = { readonly expiresAt: number; readonly cookie: string
 export type BootCode = {
   /** The code, while it is still unspent. Never put in a page or a log line by callers. */
   readonly peek: () => string | undefined;
-  /** The code this process was started with, spent or not (for the setup steps' own checks). */
+  /** The code this process was started with (or adopted), spent or not. */
   readonly original: () => string | undefined;
   /** `client` names who is asking (an IP address); unknown callers share one bucket. */
   readonly claim: (submitted: unknown, client?: string) => ClaimResult;
@@ -54,6 +60,19 @@ export type BootCode = {
   /** The owner named on the Database screen, once the database stored them. */
   readonly claimedOwner: () => string | null;
   readonly setOwner: (email: string) => void;
+  /** True while this process waits to adopt the code the database holds. */
+  readonly resumable: () => boolean;
+  /** While resumable: the code sealed in a still-valid cookie, for the database to confirm. */
+  readonly cookieCode: (cookie: string | undefined) => string | null;
+  /** Take the code the database confirmed. It is spent; returns a fresh cookie. Null when not resumable. */
+  readonly adopt: (confirmed: string) => string | null;
+};
+
+export type BootCodeOptions = {
+  /** Secret the cookie key is derived from. Random (this process only) when absent. */
+  readonly cookieSecret?: string;
+  /** Start with no code, waiting to adopt the one the database holds. */
+  readonly resumable?: boolean;
 };
 
 const digest = (value: string): Buffer => createHash("sha256").update(value, "utf8").digest();
@@ -66,8 +85,48 @@ export function newCode(): string {
   return randomBytes(24).toString("base64url");
 }
 
-export function createBootCode(code: string | undefined, now: () => number = Date.now): BootCode {
-  const key = randomBytes(32);
+function cookieKey(secret: string | undefined): Buffer {
+  return secret
+    ? Buffer.from(hkdfSync("sha256", secret, "kb-engine-claim", "claim-cookie-v2", 32))
+    : randomBytes(32);
+}
+
+type Opened = { readonly expiresAt: number; readonly code: string };
+
+function sealWith(key: Buffer, payload: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const body = Buffer.concat([cipher.update(payload, "utf8"), cipher.final()]);
+  return [iv, body, cipher.getAuthTag()].map((b) => b.toString("base64url")).join(".");
+}
+
+function openWith(key: Buffer, cookie: string | undefined, nowMs: number): Opened | null {
+  if (!cookie || cookie.length > 1024) return null;
+  const parts = cookie.split(".").map((p) => Buffer.from(p, "base64url"));
+  const [iv, body, tag] = parts;
+  if (parts.length !== 3 || !iv || !body || !tag || iv.length !== 12 || tag.length !== 16) return null;
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const payload = Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+    const [kind, exp, ...rest] = payload.split("|");
+    const expiresAt = Number(exp);
+    const code = rest.join("|");
+    if (kind !== "claimed" || !Number.isFinite(expiresAt) || expiresAt <= nowMs || !code) return null;
+    return { expiresAt, code };
+  } catch {
+    return null;
+  }
+}
+
+export function createBootCode(
+  initial: string | undefined,
+  now: () => number = Date.now,
+  options: BootCodeOptions = {},
+): BootCode {
+  const key = cookieKey(options.cookieSecret);
+  let code = initial;
+  let waiting = initial === undefined && options.resumable === true;
   let spent = false;
   let owner: string | null = null;
   let globalFailures: number[] = [];
@@ -85,7 +144,7 @@ export function createBootCode(code: string | undefined, now: () => number = Dat
     clients = next;
   };
 
-  const sign = (payload: string): string => createHmac("sha256", key).update(payload).digest("base64url");
+  const issue = (forCode: string): string => sealWith(key, `claimed|${now() + SESSION_MS}|${forCode}`);
 
   const claim = (submitted: unknown, client = "unknown"): ClaimResult => {
     const t = now();
@@ -114,21 +173,14 @@ export function createBootCode(code: string | undefined, now: () => number = Dat
     }
     if (spent) return { ok: false, reason: "spent", retryAfterSeconds: 0 };
     spent = true;
-    const payload = `claimed|${t + SESSION_MS}|${randomBytes(9).toString("base64url")}`;
-    return { ok: true, cookie: `${Buffer.from(payload).toString("base64url")}.${sign(payload)}` };
+    return { ok: true, cookie: issue(code) };
   };
 
   const session = (cookie: string | undefined): ClaimSession | null => {
-    if (!cookie || cookie.length > 1024 || !spent) return null;
-    const [body, mac] = cookie.split(".");
-    if (!body || !mac) return null;
-    const payload = Buffer.from(body, "base64url").toString("utf8");
-    const want = sign(payload);
-    if (mac.length !== want.length || !timingSafeEqual(Buffer.from(mac), Buffer.from(want))) return null;
-    const [kind, exp] = payload.split("|");
-    const expiresAt = Number(exp);
-    if (kind !== "claimed" || !Number.isFinite(expiresAt) || expiresAt <= now()) return null;
-    return { expiresAt, cookie };
+    if (!spent || !code) return null;
+    const opened = openWith(key, cookie, now());
+    if (!opened || !equal(opened.code, code)) return null;
+    return { expiresAt: opened.expiresAt, cookie: cookie as string };
   };
 
   return {
@@ -139,6 +191,15 @@ export function createBootCode(code: string | undefined, now: () => number = Dat
     claimedOwner: () => owner,
     setOwner: (email) => {
       owner = email;
+    },
+    resumable: () => waiting,
+    cookieCode: (cookie) => (waiting ? (openWith(key, cookie, now())?.code ?? null) : null),
+    adopt: (confirmed) => {
+      if (!waiting || !confirmed) return null;
+      code = confirmed;
+      waiting = false;
+      spent = true;
+      return issue(confirmed);
     },
   };
 }

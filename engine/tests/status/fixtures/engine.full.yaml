@@ -6,7 +6,7 @@ version: 1
 
 engine:
   id: acme
-  name: "Acme's AI Engine"
+  name: "Acme's Knowledge Base Engine"
   owner:
     email: owner@example.com
     names: ["Pat Owner"]
@@ -29,7 +29,7 @@ sources:
   gmail: { enabled: false }
 
 dashboard:
-  title: "Acme's AI Engine"
+  title: "Acme's Knowledge Base Engine"
   menus:
     knowledge: [overview, sources, areas, review]
     workers: [tasks]

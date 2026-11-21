@@ -93,8 +93,38 @@ function checkList(checks: NonNullable<ApplyReport["checks"]>): string {
   return `<div class="card warnings"><h2>Needs a click in Cloudflare</h2><ul>${items}</ul></div>`;
 }
 
+/**
+ * DigitalOcean's edge drops a request whose Host the app does not list
+ * (seen live 2026-11-20: "not found" on the new hostname until the domain was
+ * added). Setup cannot add it itself without a DigitalOcean token, which it
+ * does not ask for (one more secret, with rights over every app on the
+ * account); so it says exactly how.
+ */
+export function doDomainCard(host: string): string {
+  const h = esc(host);
+  return `<div class="card warnings">
+<h2>Add ${h} to the app in DigitalOcean</h2>
+<p>DigitalOcean only answers for hostnames listed on the app. Until ${h} is added there, it answers "not found".</p>
+<ol>
+<li>In DigitalOcean open your app, then <strong>Settings</strong>, then <strong>Domains</strong>, then <strong>Add domain</strong>.</li>
+<li>Type <code>${h}</code>. Choose <strong>You manage your domain</strong> (Cloudflare holds its DNS; setup already pointed it at this app). Do not let DigitalOcean change the DNS.</li>
+<li>Save. DigitalOcean redeploys the app; wait until it is live, then open <code>https://${h}/health</code>.</li>
+</ol>
+<p class="hint">Or on the command line: <code>doctl apps spec get APP_ID &gt; spec.yaml</code>, add <code>domains: [{domain: ${h}, type: PRIMARY}]</code> at the top level, then <code>doctl apps update APP_ID --spec spec.yaml</code>. The Health screen checks that ${h} reaches this app.</p>
+</div>`;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
 function successBody(connectorUrl: string): string {
-  return `<div class="card">
+  const host = hostOf(connectorUrl);
+  return `${host ? doDomainCard(host) : ""}<div class="card">
 <h2>Connect Claude</h2>
 <p>Add this address as a custom connector in Claude:</p>
 <p class="readonly mono">${esc(connectorUrl)}</p>

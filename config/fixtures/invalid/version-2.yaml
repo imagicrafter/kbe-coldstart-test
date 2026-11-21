@@ -2,6 +2,6 @@
 version: 2
 engine:
   id: acme
-  name: Acme's AI Engine
+  name: Acme's Knowledge Base Engine
   owner:
     email: owner@example.com

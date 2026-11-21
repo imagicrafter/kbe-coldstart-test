@@ -8,14 +8,22 @@ import { keyPrefix, type DrawerDef, type EntitySchema } from "../entities/templa
  * reply: the item is tried again later, and nothing is half-applied.
  */
 
+/** One item may name a person, their organisation, a project and a deal. */
+export const MAX_UPDATES = 6;
+export const MAX_NEW_PAGES = 4;
+const MAX_LINKS = 8;
+
 const FieldValue = z.union([z.string().max(300), z.number().finite()]);
 const Fields = z.record(z.string().regex(/^[a-z][a-z0-9_-]*$/), FieldValue);
+/** Keys of other pages this one links to (the header's `related` list). */
+const Related = z.array(z.string().min(1).max(200)).max(MAX_LINKS);
 
 const Update = z
   .object({
     key: z.string().min(1).max(200),
     patches: z.array(patchSchema).max(8),
     fields: Fields.optional(),
+    related: Related.optional(),
   })
   .strict();
 
@@ -26,6 +34,7 @@ const NewPage = z
     title: z.string().min(1).max(200),
     description: z.string().max(300).optional(),
     fields: Fields.optional(),
+    related: Related.optional(),
     sections: z
       .array(z.object({ heading: z.string().min(1).max(120), text: z.string().max(4000) }).strict())
       .max(8),
@@ -34,15 +43,16 @@ const NewPage = z
 
 export const replySchema = z
   .object({
-    updates: z.array(Update).max(3),
-    new_pages: z.array(NewPage).max(1),
+    updates: z.array(Update).max(MAX_UPDATES),
+    new_pages: z.array(NewPage).max(MAX_NEW_PAGES),
     notes: z.string().max(2000).optional(),
   })
   .strict();
 
 export type Reply = z.infer<typeof replySchema>;
-export type PlannedUpdate = z.infer<typeof Update> & { readonly fields: Record<string, string | number> };
-export type PlannedNewPage = z.infer<typeof NewPage> & { readonly fields: Record<string, string | number> };
+type Linked = { readonly fields: Record<string, string | number>; readonly related: readonly string[] };
+export type PlannedUpdate = Omit<z.infer<typeof Update>, "related"> & Linked;
+export type PlannedNewPage = Omit<z.infer<typeof NewPage>, "related"> & Linked;
 
 export type Plan = {
   readonly updates: readonly PlannedUpdate[];
@@ -215,6 +225,20 @@ function checkNewPage(n: PlannedNewPage, ctx: CheckContext): string | null {
   return leaked.length > 0 ? "the new page copies text from another page" : null;
 }
 
+function dedupe(keys: readonly string[]): readonly string[] {
+  return [...new Set(keys)];
+}
+
+/**
+ * A page may link only to pages the curator was shown or creates in the same
+ * reply: it never points at a page outside the item's reach.
+ */
+function linkProblem(key: string, related: readonly string[], linkable: ReadonlySet<string>): string | null {
+  if (related.includes(key)) return `"${key}" links to itself`;
+  const stranger = related.find((r) => !linkable.has(r));
+  return stranger === undefined ? null : `"${key}" links to "${stranger}", which is not on the shortlist or in this reply`;
+}
+
 function totalChars(reply: Reply): number {
   return JSON.stringify(reply).length;
 }
@@ -238,12 +262,21 @@ export function checkReply(raw: string, ctx: CheckContext): CheckResult {
   const keys = reply.updates.map((u) => u.key);
   if (new Set(keys).size !== keys.length) return { ok: false, reason: "a page is named twice in updates" };
 
-  const updates: PlannedUpdate[] = reply.updates
-    .map((u) => ({ ...u, fields: u.fields ?? {} }))
-    .filter((u) => u.patches.length > 0 || Object.keys(u.fields).length > 0);
-  const newPages: PlannedNewPage[] = reply.new_pages.map((n) => ({ ...n, fields: n.fields ?? {} }));
+  const newKeys = reply.new_pages.map((n) => n.key);
+  if (new Set(newKeys).size !== newKeys.length) return { ok: false, reason: "a new page is named twice" };
 
+  const updates: PlannedUpdate[] = reply.updates
+    .map((u) => ({ ...u, fields: u.fields ?? {}, related: dedupe(u.related ?? []) }))
+    .filter((u) => u.patches.length > 0 || Object.keys(u.fields).length > 0 || u.related.length > 0);
+  const newPages: PlannedNewPage[] = reply.new_pages.map((n) => ({
+    ...n,
+    fields: n.fields ?? {},
+    related: dedupe(n.related ?? []),
+  }));
+
+  const linkable = new Set([...ctx.shortlist.map((c) => c.key), ...newKeys]);
   const problem =
+    [...updates, ...newPages].map((p) => linkProblem(p.key, p.related, linkable)).find((p) => p !== null) ??
     updates.map((u) => checkUpdate(u, ctx)).find((p) => p !== null) ??
     newPages.map((n) => checkNewPage(n, ctx)).find((p) => p !== null) ??
     null;

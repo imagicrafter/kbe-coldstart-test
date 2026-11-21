@@ -216,7 +216,7 @@ describe("GET /status", () => {
     expect(csp).not.toContain("unsafe-inline");
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const html = await res.text();
-    expect(html).toContain("Acme&#39;s AI Engine");
+    expect(html).toContain("Acme&#39;s Knowledge Base Engine");
     expect(html).toContain('id="engine-data"');
     expect(html).toMatch(/\/status\/assets\/dashboard\.js\?v=[0-9a-f]{12}"/);
   });

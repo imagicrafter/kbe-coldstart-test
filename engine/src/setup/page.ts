@@ -1,5 +1,6 @@
 import { esc } from "../status/page.js";
-import { MAX_DOMAINS, MAX_EMAILS, type FormValues } from "./inputs.js";
+import { setupMenu, shell } from "../app/shell.js";
+import { DEFAULT_SESSION, MAX_DOMAINS, MAX_EMAILS, SESSIONS, SESSION_NAMES, type FormValues, type SessionLength } from "./inputs.js";
 import { TOKEN_PERMISSIONS } from "./permissions.js";
 import { tokenLink } from "./token-link.js";
 
@@ -17,26 +18,9 @@ import { tokenLink } from "./token-link.js";
 export const SETUP_CSP =
   "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
-export function layout(title: string, body: string, version: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<meta name="robots" content="noindex">
-<title>${esc(title)}</title>
-<link rel="stylesheet" href="/setup/assets/setup.css?v=${encodeURIComponent(version)}">
-</head>
-<body>
-<main>
-<p class="eyebrow">AI Engine setup</p>
-<h1>${esc(title)}</h1>
-${body}
-</main>
-</body>
-</html>
-`;
+/** `version` is the stylesheet version; left out, the shell reads it itself. */
+export function layout(title: string, body: string, version?: string): string {
+  return shell("setup", "/setup", title, body, true, version);
 }
 
 export function messagePage(
@@ -168,6 +152,17 @@ ${levelChoice("domain", v.level, "Company domain", "Anyone with an email address
 <p class="hint">One per line, like example.com. At most ${MAX_DOMAINS}. Signing in is not the same as seeing knowledge: what each person sees is still decided by their topic grants.</p>`;
 }
 
+/** How long a sign-in lasts (inputs.ts SESSIONS); the admin pages stay 12 hours. */
+function sessionField(v: FormValues): string {
+  const chosen = v.session && SESSIONS.includes(v.session as SessionLength) ? v.session : DEFAULT_SESSION;
+  const options = SESSIONS.map(
+    (s) => `<option value="${esc(s)}"${s === chosen ? " selected" : ""}>${esc(SESSION_NAMES[s])}</option>`,
+  ).join("");
+  return `<label for="session">How long a sign-in lasts</label>
+<select id="session" name="session">${options}</select>
+<p class="hint">For people and for Claude's connector. 1 year means Claude stays connected. The status and setup pages always ask again every 12 hours, with a second factor.</p>`;
+}
+
 function originField(view: FormView): string {
   if (view.fixedOrigin) {
     return `<p class="label">This app's own address</p>
@@ -202,6 +197,7 @@ ${view.claimed ? "" : `<label for="code">Setup code</label>
 ${originField(view)}
 ${ownerField(view)}
 ${levelFields(v)}
+${sessionField(v)}
 <label class="choice"><input type="checkbox" name="replace" value="yes"${v.replace ? " checked" : ""}><span><strong>Replace what is already there</strong><br><span class="hint">Leave this off for a new hostname. Tick it only if the hostname already has a DNS record or a Cloudflare application that you want this setup to take over.</span></span></label>
 <button type="submit">Preview the changes</button>
 <p class="hint">Nothing is changed yet. The next page shows exactly what will be done.</p>
@@ -258,6 +254,7 @@ export function infoPage(view: InfoView, version: string): string {
 <h2>Changing this</h2>
 ${rerunHelp(view)}
 </div>
+${setupMenu()}
 <p class="hint">Signed in as ${esc(view.email)}.</p>`;
   return layout("Sign-in is set up", body, version);
 }

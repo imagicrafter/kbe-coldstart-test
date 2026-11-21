@@ -54,7 +54,9 @@ async function applyReview(r: ApprovedReview, deps: TickDeps & { now: () => Date
     await deps.store.savePage(r.item_id, p["page"] as Record<string, unknown>, null);
     return "applied";
   }
-  const update = p["update"] as { patches: Patch[]; fields: Record<string, string | number> } | undefined;
+  const update = p["update"] as
+    | { patches: Patch[]; fields: Record<string, string | number>; related?: readonly string[] }
+    | undefined;
   const page = (await deps.store.candidates(r.item_id, [r.page_key], "", 1)).find((c) => c.key === r.page_key);
   if (!update || !page) return "stale";
   if (alreadyHas(page, r.item_id)) return "applied";

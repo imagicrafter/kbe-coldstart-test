@@ -1,0 +1,235 @@
+import { describe, it, expect } from "vitest";
+import { Hono } from "hono";
+import { makeOwnerRoutes } from "../../src/app/owner-routes.js";
+import { makeIndexingRoutes } from "../../src/app/indexing-routes.js";
+import { makeSettingsRoutes } from "../../src/app/settings-routes.js";
+import { editedProperties } from "../../src/app/page-view.js";
+import { listColumns } from "../../src/app/knowledge-routes.js";
+import { fillChrome, roleLabel } from "../../src/app/chrome.js";
+import { appLayout } from "../../src/app/html.js";
+import { entitySchema } from "../../src/entities/templates.js";
+import { ASSERT, H64, OWNER, PAGE_ID, READER, client, createScreens, csrfIn } from "./fakes.js";
+
+function world() {
+  const screens = createScreens();
+  screens.fake.state.templates = ["consulting"];
+  const app = new Hono();
+  app.route("/app", makeOwnerRoutes(() => screens.deps));
+  app.route("/setup", makeSettingsRoutes(() => screens.deps));
+  app.route("/setup", makeIndexingRoutes(() => screens.deps));
+  return { ...screens, http: client(app) };
+}
+
+const clean = (html: string) => {
+  expect(html).not.toMatch(/<script/i);
+  expect(html).not.toMatch(/\sstyle=/i);
+  expect(html).not.toMatch(/\son[a-z]+=/i);
+  expect(html).not.toContain("<!--kbe:");
+};
+const drawers = entitySchema(["consulting"]).drawers;
+const orgs = drawers.find((d) => d.id === "organisations");
+
+describe("the menu: signed-in person and the Knowledge tree", () => {
+  it("shows the email and role bottom left, and the drawer tree with counts, recent and pinned", async () => {
+    const w = world();
+    w.fake.state.pinned = true;
+    const html = await (await w.http.get("/app", ASSERT.reader)).text();
+    expect(html).toMatch(/class="sidebar-user".*reader@example\.com.*role-reader">reader</s);
+    expect(html).toMatch(/<details class="tree-root" open><summary>/);
+    expect(html).toMatch(/href="\/app\/knowledge\/people">.*People<\/span><span class="count">1234</s);
+    expect(html).toContain('href="/app/knowledge/deals"');
+    expect(html).toMatch(/<summary>Pinned<\/summary>/);
+    expect(html).toMatch(/<summary>Recent<\/summary>.*Acme &lt;Corp&gt;/s);
+    expect(html).not.toContain("/setup/indexing");
+    clean(html);
+  });
+
+  it("an administrator also gets Indexing", async () => {
+    const w = world();
+    const html = await (await w.http.get("/app", ASSERT.owner)).text();
+    expect(html).toContain('href="/setup/indexing"');
+    expect(html).toMatch(/role-administrator/);
+  });
+
+  it("roles read owner / administrator / reviewer / reader", () => {
+    expect(roleLabel({ role: "administrator", is_owner: true })).toBe("owner");
+    expect(roleLabel({ role: "administrator" })).toBe("administrator");
+    expect(roleLabel({ role: "reviewer" })).toBe("reviewer");
+    expect(roleLabel(null)).toBe("reader");
+  });
+
+  it("without a chrome the markers vanish and the plain Knowledge link stays", () => {
+    const html = fillChrome(appLayout("app", "/app", "x", ""), undefined);
+    expect(html).toContain('href="/app/knowledge"');
+    expect(html).not.toContain("<!--kbe:");
+  });
+
+  it("an email in the menu cannot inject a replacement pattern", () => {
+    const html = fillChrome(appLayout("app", "/app", "x", ""), { email: "a$&b@example.com", role: "reader", isAdmin: false });
+    expect(html).toContain("a$&amp;b@example.com");
+  });
+});
+
+describe("the Knowledge screens", () => {
+  it("home: folders with counts from the tree, and the ask-Claude line", async () => {
+    const w = world();
+    const html = await (await w.http.get("/app/knowledge", ASSERT.reader)).text();
+    expect(html).toContain("Ask your Claude to add or change knowledge; use this to check and correct it.");
+    expect(html).toContain("1235 pages in");
+    expect(w.fake.calls.some((c) => c.fn === "pages")).toBe(false);
+    clean(html);
+  });
+
+  it("a drawer: paged, sorted list with drawer columns, stale flag, search and topic chips", async () => {
+    const w = world();
+    const html = await (await w.http.get("/app/knowledge/organisations?p=2&size=25&sort=title&dir=asc&topic=clients&q=acme", ASSERT.reader)).text();
+    const call = w.fake.calls.find((c) => c.fn === "drawerPages");
+    expect(call?.args[1]).toMatchObject({ drawer: "organisations", query: "acme", topic: "clients", sort: "title", desc: false, limit: 25, offset: 25 });
+    expect(html).toContain("120 pages");
+    expect(html).toMatch(/<th>role<\/th>/);
+    expect(html).toContain("stale");
+    expect(html).toMatch(/rel="prev"/);
+    expect(html).toMatch(/rel="next"/);
+    expect(html).toMatch(/<strong aria-current="page">2<\/strong>/);
+    expect(html).toContain('class="chip link on"');
+    expect(html).toContain("Pick a page on the left");
+    expect(html).not.toMatch(/New page|Create/);
+    clean(html);
+  });
+
+  it("bad paging and sort values fall back to safe defaults", async () => {
+    const w = world();
+    await w.http.get("/app/knowledge/organisations?p=-4&size=9999&sort=evil&topic=Bad%20Topic", ASSERT.reader);
+    expect(w.fake.calls.find((c) => c.fn === "drawerPages")?.args[1]).toMatchObject({ sort: "updated", desc: true, limit: 50, offset: 0, topic: null });
+  });
+
+  it("opens a page in the right pane (preview) and in edit mode", async () => {
+    const w = world();
+    const view = await (await w.http.get(`/app/knowledge/organisations?page=${PAGE_ID}`, ASSERT.reader)).text();
+    expect(view).toContain('class="card properties"');
+    expect(view).toMatch(/Backlinks \(1\)/);
+    expect(view).toContain("Project &lt;X&gt;");
+    expect(view).toContain("no page yet");
+    expect(view).not.toContain("<textarea");
+    const edit = await (await w.http.get(`/app/knowledge/organisations?page=${PAGE_ID}&mode=edit`, ASSERT.reader)).text();
+    expect(edit).toContain("<textarea");
+    expect(edit).toMatch(/<select id="f_role" name="f_role">/);
+    clean(edit);
+  });
+
+  it("panes collapse by a link, no script", async () => {
+    const w = world();
+    const html = await (await w.http.get("/app/knowledge/organisations?list=closed", ASSERT.reader)).text();
+    expect(html).toContain("list-closed");
+    expect(html).toMatch(/class="pane-toggle" href="\/app\/knowledge\/organisations">Expand/);
+  });
+
+  it("an unknown drawer with no pages is 404, a bad id is 404", async () => {
+    const w = world();
+    expect((await w.http.get("/app/knowledge/nonsense", ASSERT.reader)).status).toBe(404);
+    expect((await w.http.get("/app/knowledge/Bad!", ASSERT.reader)).status).toBe(404);
+  });
+});
+
+describe("one page", () => {
+  it("shows properties typed, the body rendered, and links", async () => {
+    const w = world();
+    w.fake.state.page = { ...w.fake.state.page, body: "## Notes\n- see [[pat@acme.com]]\n<script>x</script>", fields: { role: "client", last_contact: "2026-11-01" } };
+    const html = await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text();
+    expect(html).toContain('<a class="wikilink" href="/app/open?key=pat%40acme.com">');
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).toMatch(/<time datetime="2026-11-01">/);
+    expect(html).toContain("summary pending");
+    expect(html).toContain('action="/app/pages/' + PAGE_ID + '/pin"');
+    expect(html).not.toContain("/setup/indexing/reindex");
+    clean(html);
+  });
+
+  it("an administrator gets Re-index on their page", async () => {
+    const w = world();
+    // The owner reads the reader's page in this fake only through its own; use the reader's role switch.
+    w.deps.store.whoami = async () => ({ role: "administrator", is_owner: true });
+    const html = await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text();
+    expect(html).toContain('action="/setup/indexing/reindex"');
+    expect(html).toMatch(/role-owner">owner/);
+  });
+
+  it("follows a [[link]] by key to the page", async () => {
+    const w = world();
+    const res = await w.http.get("/app/open?key=ACME.com", ASSERT.reader);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/app/pages/${PAGE_ID}`);
+    expect((await w.http.get("/app/open?key=nobody.com", ASSERT.reader)).status).toBe(404);
+  });
+
+  it("pins and marks reviewed with the form token, and only returns into the app", async () => {
+    const w = world();
+    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text());
+    const res = await w.http.post(`/app/pages/${PAGE_ID}/pin`, { csrf, pin: "yes", back: "https://evil.example/" }, ASSERT.reader);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`/app/pages/${PAGE_ID}`);
+    expect(w.fake.state.pinned).toBe(true);
+    const r2 = await w.http.post(`/app/pages/${PAGE_ID}/reviewed`, { csrf, back: "/app/knowledge/organisations" }, ASSERT.reader);
+    expect(r2.headers.get("location")).toBe("/app/knowledge/organisations");
+    expect((await w.http.post(`/app/pages/${PAGE_ID}/pin`, { pin: "yes" }, ASSERT.reader)).status).toBe(403);
+  });
+
+  it("saves properties checked against the drawer schema, through the hash-checked write", async () => {
+    const w = world();
+    const csrf = csrfIn(await (await w.http.get(`/app/pages/${PAGE_ID}/edit`, ASSERT.reader)).text());
+    const form = { csrf, expected_hash: H64("a"), props: "1", title: "Acme", description: "d", status: "current", aliases: "Acme Inc", tags: "vip, north", related: "Pat@acme.com", f_role: "client", f_last_contact: "2026-11-20", body: "x" };
+    const res = await w.http.post(`/app/pages/${PAGE_ID}`, form, ASSERT.reader);
+    expect(res.status).toBe(200);
+    const saved = w.fake.calls.find((c) => c.fn === "savePage")?.args[1] as Record<string, unknown>;
+    expect(saved).toMatchObject({ key: "acme.com", status: "current", tags: ["vip", "north"], related: ["pat@acme.com"], aliases: ["Acme Inc"], fields: { role: "client", last_contact: "2026-11-20" } });
+    expect(saved).not.toHaveProperty("stage");
+    const bad = await w.http.post(`/app/pages/${PAGE_ID}`, { ...form, f_role: "emperor" }, ASSERT.reader);
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toMatch(/must be one of/);
+  });
+
+  it("property checks", () => {
+    const cur = { key: "acme.com", status: "unreviewed", fields: { custom: 1 } };
+    expect(editedProperties(cur, { status: "gone" }, orgs)).toMatch(/Status/);
+    expect(editedProperties(cur, { related: "acme.com" }, orgs)).toMatch(/itself/);
+    expect(editedProperties(cur, { tags: "has space" }, orgs)).toMatch(/not a valid/);
+    expect(editedProperties(cur, { f_next_date: "2026-02-30" }, orgs)).toMatch(/date/);
+    expect(editedProperties(cur, {}, orgs)).toMatchObject({ fields: { custom: 1 } });
+    expect(editedProperties(cur, {}, undefined)).toMatchObject({ fields: { custom: 1 } });
+  });
+
+  it("list columns come from the drawer's list views", () => {
+    expect(listColumns(drawers.find((d) => d.id === "deals"))).toEqual(["stage", "next_date", "value"]);
+  });
+});
+
+describe("Indexing (administrators)", () => {
+  it("shows status, settings and actions", async () => {
+    const w = world();
+    const html = await (await w.http.get("/setup/indexing", ASSERT.owner)).text();
+    for (const t of ["1,500", "Summaries pending", "Failed items", "openai-gpt-oss-120b", "gte-small", "2 minutes", "Re-run pending summaries", 'href="/setup/model"', "Turn the curator off"]) {
+      expect(html).toContain(t);
+    }
+    clean(html);
+  });
+
+  it("refuses a reader", async () => {
+    const w = world();
+    expect((await w.http.get("/setup/indexing", ASSERT.reader)).status).toBe(403);
+  });
+
+  it("re-runs summaries and re-indexes a page with the form token only", async () => {
+    const w = world();
+    const csrf = csrfIn(await (await w.http.get("/setup/indexing", ASSERT.owner)).text());
+    // the first form on the page is the curator switch (scope timer); find the indexing one
+    const html = await (await w.http.get("/setup/indexing", ASSERT.owner)).text();
+    const tokens = [...html.matchAll(/name="csrf" value="([^"]+)"/g)].map((m) => m[1] ?? "");
+    const idx = tokens[tokens.length - 1] ?? csrf;
+    expect((await w.http.post("/setup/indexing/rerun", { csrf: idx }, ASSERT.owner)).status).toBe(200);
+    expect(w.fake.calls.some((c) => c.fn === "rerunSummaries")).toBe(true);
+    expect((await w.http.post("/setup/indexing/reindex", { csrf: idx, page: PAGE_ID }, ASSERT.owner)).status).toBe(200);
+    expect((await w.http.post("/setup/indexing/reindex", { csrf: idx, page: "x" }, ASSERT.owner)).status).toBe(400);
+    expect((await w.http.post("/setup/indexing/rerun", {}, ASSERT.owner)).status).toBe(403);
+    expect(OWNER).not.toBe(READER);
+  });
+});

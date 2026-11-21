@@ -4,9 +4,11 @@ import { setupDeps } from "../setup/defaults.js";
 import { currentMode } from "../setup/mode.js";
 import { embedText } from "../supabase.js";
 import { createCsrf } from "./csrf.js";
+import { checkHostReaches } from "./host-check.js";
 import { findRepoDir, repoSqlFiles } from "./db-setup.js";
 import { bootCode } from "./first-run.js";
-import type { FirstRunRouteDeps } from "./first-run-routes.js";
+import type { FirstRunRouteDeps, HeldVerdict } from "./first-run-routes.js";
+import { attemptCheck, codeValid } from "../setup/db.js";
 import { refFromUrl } from "./mgmt.js";
 import type { SettingsDeps } from "./settings-routes.js";
 import { liveStore } from "./store.js";
@@ -22,6 +24,7 @@ const liveScreens = (): SettingsDeps => ({
   csrf,
   now: Date.now,
   embedCheck: async () => (await embedText("health check")).length > 0,
+  hostCheck: (host) => checkHostReaches(host),
 });
 
 const liveFirstRun = (): FirstRunRouteDeps => ({
@@ -40,7 +43,18 @@ const liveFirstRun = (): FirstRunRouteDeps => ({
   // run adds api.supabase.com to it (first-run.ts).
   fetch: (url, init) => fetch(url, init),
   onDatabaseReady: invalidateSettings,
+  confirmHeld: confirmHeldClaim,
 });
+
+/** A resumed claim: the database's lockout first, then its own check of the code's hash. */
+async function confirmHeldClaim(code: string): Promise<HeldVerdict> {
+  const before = await attemptCheck();
+  if (before.locked) return { ok: false, locked: true, retryAfterSeconds: before.retry_after_seconds };
+  if (await codeValid(code)) return { ok: true };
+  // engine_setup_code_valid counted the wrong code; ask whether that locked it.
+  const after = await attemptCheck();
+  return { ok: false, locked: after.locked, retryAfterSeconds: after.retry_after_seconds };
+}
 
 let screens: () => SettingsDeps = liveScreens;
 let firstRun: () => FirstRunRouteDeps = liveFirstRun;

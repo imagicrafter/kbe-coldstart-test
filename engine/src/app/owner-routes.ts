@@ -4,6 +4,12 @@ import { logger } from "../log/logger.js";
 import { diffHtml, lineDiff } from "./diff.js";
 import { readForm, requirePerson, storeFailure, UUID, type Allowed, type ScreenDeps } from "./guard.js";
 import { appLayout, card, esc, hidden, notice, postForm, sendMessage, sendPage, when } from "./html.js";
+import { buildTree, roleLabel, setChrome } from "./chrome.js";
+import { chosenDrawers } from "./knowledge.js";
+import {
+  drawerFor, knowledgeDrawer, knowledgeHome, markReviewed, openByKey, pageAlone, pageEdit, pinPage,
+} from "./knowledge-routes.js";
+import { editedProperties, MAX_BODY } from "./page-view.js";
 import type { Row } from "./store.js";
 
 /**
@@ -13,8 +19,10 @@ import type { Row } from "./store.js";
  *   /app/reviews               curator changes waiting for your yes
  *   /app/reviews/:id           one change with its diff; approve or reject
  *   /app/flagged               items held by the steering screen; release or discard
- *   /app/pages                 your pages
- *   /app/pages/:id             one page, with a plain edit box
+ *   /app/knowledge...          the Knowledge screens (knowledge-routes.ts)
+ *   /app/pages                 find one of your pages
+ *   /app/pages/:id             one page (properties, text, links)
+ *   /app/pages/:id/edit        its properties form and Markdown text
  *   /app/pages/:id/history     its versions
  *   /app/history/:id           one version, its diff to now; restore
  *
@@ -23,8 +31,6 @@ import type { Row } from "./store.js";
  * reaches these functions.
  */
 
-const MAX_BODY = 200_000;
-
 type Handler = (c: Context, me: Allowed, deps: ScreenDeps) => Promise<Response>;
 
 function signedIn(deps: ScreenDeps, handler: Handler) {
@@ -32,11 +38,23 @@ function signedIn(deps: ScreenDeps, handler: Handler) {
     const me = await requirePerson(c, deps);
     if (!me.ok) return me.response;
     try {
+      await recordChrome(c, me, deps);
       return await handler(c, me, deps);
     } catch (err) {
       return storeFailure(c, "app", err);
     }
   };
+}
+
+/** The menu's signed-in person and Knowledge tree for this request. Never fails a page. */
+async function recordChrome(c: Context, me: Allowed, deps: ScreenDeps): Promise<void> {
+  const base = { email: me.email, role: roleLabel(me.who), isAdmin: me.who?.["role"] === "administrator" };
+  try {
+    const [chosen, row] = await Promise.all([deps.store.templates(), deps.store.knowledgeTree(me.email)]);
+    setChrome(c, { ...base, tree: buildTree(row, chosenDrawers(chosen)) });
+  } catch {
+    setChrome(c, base);
+  }
 }
 
 const page = (c: Context, here: string, title: string, body: string, status: 200 | 400 | 409 = 200) =>
@@ -59,7 +77,7 @@ const home: Handler = async (c, me) => {
 <ul>
 <li><a href="/app/reviews">Waiting for your yes</a>: ${esc(who["pending_reviews"] ?? 0)}</li>
 <li><a href="/app/flagged">Flagged items</a>: ${esc(who["flagged"] ?? 0)}</li>
-<li><a href="/app/pages">Your pages</a>: ${esc(who["pages"] ?? 0)}</li>
+<li><a href="/app/knowledge">Knowledge</a>: ${esc(who["pages"] ?? 0)} pages in drawers</li>
 </ul>`);
   return page(c, "/app", "Your Engine", body);
 };
@@ -193,34 +211,6 @@ const pages: Handler = async (c, me, deps) => {
   return page(c, "/app/pages", "Your pages", card(search) + card(rows.length === 0 ? "<p>No pages.</p>" : `<ul>${items}</ul>`));
 };
 
-function editForm(p: Row, csrf: string): string {
-  const id = str(p["id"]);
-  return postForm(
-    `/app/pages/${id}`,
-    csrf,
-    `${hidden("expected_hash", str(p["content_hash"]))}
-<label for="title">Title</label>
-<input type="text" id="title" name="title" value="${esc(p["title"])}" maxlength="300" required>
-<label for="description">One-line description</label>
-<input type="text" id="description" name="description" value="${esc(p["description"])}" maxlength="500">
-<label for="body">Text</label>
-<textarea id="body" name="body" rows="24" maxlength="${MAX_BODY}">${esc(p["body"])}</textarea>
-<p class="hint">Saving writes a new version (the old one stays in the history). If the page changed since you opened it, the save is refused and nothing is lost.</p>`,
-    "Save",
-  );
-}
-
-const pageOne: Handler = async (c, me, deps) => {
-  const id = idParam(c);
-  if (!id) return sendMessage(c, "app", 404, "Not found", "There is no such page.");
-  const p = await deps.store.page(me.email, id);
-  if (!p) return sendMessage(c, "app", 404, "Not found", "You have no such page.");
-  const header = card(`<p>${esc(p["drawer"])} · key ${esc(p["key"])} · status ${esc(p["status"])} · updated ${esc(when(p["updated_at"]))}</p>
-<p>Topics: ${esc(list(p["topics"]).join(", ") || "none (only you)")}</p>
-<p><a href="/app/pages/${esc(id)}/history">History</a></p>`);
-  return page(c, "/app/pages", str(p["title"]), header + card(editForm(p, deps.csrf.token(me.email, `page:${id}`))));
-};
-
 /** The stored page with the three edited fields replaced. */
 export function editedPage(current: Row, form: Readonly<Record<string, string>>): Row | string {
   const title = (form["title"] ?? "").trim();
@@ -243,14 +233,23 @@ const savePage: Handler = async (c, me, deps) => {
   if (!/^[0-9a-f]{64}$/.test(expected)) return sendMessage(c, "app", 400, "Not accepted", "Open the page again and redo the edit.");
   const current = await deps.store.page(me.email, id);
   if (!current) return sendMessage(c, "app", 404, "Not found", "You have no such page.");
-  const next = editedPage(current, sent.form);
+  let next = editedPage(current, sent.form);
   if (typeof next === "string") return page(c, "/app/pages", "Not saved", notice("error", next), 400);
+  if (sent.form["props"] === "1") {
+    const { def } = await drawerFor(deps, str(current["drawer"]));
+    const props = editedProperties(current, sent.form, def);
+    if (typeof props === "string") {
+      return page(c, "/app/pages", "Not saved", notice("error", props) + card(`<pre>${esc(next["body"])}</pre>`), 400);
+    }
+    next = { ...next, ...props };
+  }
   if (current["content_hash"] !== expected) {
     return page(c, "/app/pages", "Not saved", notice("error", "The page changed since you opened it. Open it again; your text is below so you can copy it.") + card(`<pre>${esc(next["body"])}</pre>`), 409);
   }
   const result = await deps.store.savePage(me.email, next, expected);
   logger.info({ page: id, changed: result.changed }, "app: page saved");
-  return sendMessage(c, "app", 200, result.changed ? "Saved" : "No change", result.changed ? "A new version was saved." : "Nothing was different, so nothing was written.");
+  const back = card(`<p><a href="/app/pages/${esc(id)}">Back to the page</a></p>`);
+  return page(c, "/app/pages", result.changed ? "Saved" : "No change", notice("ok", result.changed ? "A new version was saved; its summary is queued again." : "Nothing was different, so nothing was written.") + back);
 };
 
 const history: Handler = async (c, me, deps) => {
@@ -301,8 +300,14 @@ export function makeOwnerRoutes(use: () => ScreenDeps): Hono {
   app.get("/flagged", h(flagged));
   app.post("/flagged/:id/release", h(flagAction("release")));
   app.post("/flagged/:id/discard", h(flagAction("discard")));
+  app.get("/knowledge", h(knowledgeHome));
+  app.get("/knowledge/:drawer", h(knowledgeDrawer));
+  app.get("/open", h(openByKey));
   app.get("/pages", h(pages));
-  app.get("/pages/:id", h(pageOne));
+  app.get("/pages/:id", h(pageAlone));
+  app.get("/pages/:id/edit", h(pageEdit));
+  app.post("/pages/:id/pin", h(pinPage));
+  app.post("/pages/:id/reviewed", h(markReviewed));
   app.post("/pages/:id", h(savePage));
   app.get("/pages/:id/history", h(history));
   app.get("/history/:id", h(version));

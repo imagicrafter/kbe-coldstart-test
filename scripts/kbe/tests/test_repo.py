@@ -15,7 +15,7 @@ from kbe.tests.helpers import FakeRunner, make_context
 REPO_ROOT = context.repo_root()
 SLUG = "acme/knowledge"
 FLAGS = [
-    "--engine-id", "acme", "--engine-name", "Acme's AI Engine",
+    "--engine-id", "acme", "--engine-name", "Acme's Knowledge Base Engine",
     "--owner-email", "Owner@Example.com", "--owner-name", "Pat Owner",
     "--topic", "consulting=Consulting", "--topic", "private=Private:sensitive",
     "--sources", "drive",
@@ -169,7 +169,7 @@ def test_create_makes_a_private_repo_fills_it_and_pushes(tmp_path):
     assert lines[1] == f"gh repo clone {SLUG} {target}"
     assert lines[2] == "git symbolic-ref HEAD refs/heads/main"
     assert lines[3].startswith("git add -- ")
-    assert lines[4].startswith("git commit -m Set up the knowledge repo for Acme's AI Engine -- ")
+    assert lines[4].startswith("git commit -m Set up the knowledge repo for Acme's Knowledge Base Engine -- ")
     assert lines[5] == "git push -u origin HEAD:main"
     assert all(call["cwd"] == target for call in runner.calls[2:])
 

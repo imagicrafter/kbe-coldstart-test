@@ -76,29 +76,36 @@ type ZoneSearch = {
   readonly details: readonly string[];
   /** Cloudflare refused the token outright (401) on the zone list. */
   readonly refused: boolean;
+  /** A zone call was refused with code 9109 (seen live with a future start date). */
+  readonly code9109?: boolean;
 };
+
+/** Cloudflare's "Unauthorized to access requested resource". */
+const NOT_ALLOWED_YET = 9109;
 
 async function findZone(
   client: CloudflareClient,
   host: string,
 ): Promise<ZoneSearch> {
   const details: string[] = [];
+  let code9109 = false;
   for (const name of zoneCandidates(host)) {
     try {
       const found = await client.list(["zones"], { name });
       const zone = found
         .map((item) => Zone.safeParse(item))
         .find((parsed) => parsed.success && parsed.data.name === name);
-      if (zone?.success) return { zone: zone.data, details, refused: false };
+      if (zone?.success) return { zone: zone.data, details, refused: false, code9109 };
       details.push(`zones?name=${name}: no match`);
     } catch (err) {
       rethrowUnlessAnswer(err);
       details.push(`zones?name=${name}: ${said(err)}`);
-      if (err.kind === "auth") return { zone: null, details, refused: true };
+      if (err.codes.includes(NOT_ALLOWED_YET)) code9109 = true;
+      if (err.kind === "auth") return { zone: null, details, refused: true, code9109 };
       if (err.kind !== "forbidden") throw err;
     }
   }
-  return { zone: null, details, refused: false };
+  return { zone: null, details, refused: false, code9109 };
 }
 
 const Status = z.object({ status: z.string() });
@@ -209,9 +216,14 @@ async function breadthWarnings(
   }
 }
 
-function zoneMissing(host: string, details: readonly string[]): SetupStepError {
+function zoneMissing(host: string, details: readonly string[], code9109 = false): SetupStepError {
+  // Live 2026-11-20: verify said active, but every zone call answered 403
+  // [9109] because the token's start date (TTL "Start date") was in the future.
+  const startDate = code9109
+    ? " Cloudflare answered 9109 (not allowed): check the token's start date in its TTL settings (a start date in the future causes this; leave it empty), and that it has Zone Read for this zone."
+    : "";
   return new SetupStepError(
-    `The token cannot see a Cloudflare zone for ${host}. The domain must be on this Cloudflare account, and the token needs ${permissionLabel("zone")} and ${permissionLabel("dns")} for that zone (Zone policy card, Specific zone).`,
+    `The token cannot see a Cloudflare zone for ${host}. The domain must be on this Cloudflare account, and the token needs ${permissionLabel("zone")} and ${permissionLabel("dns")} for that zone (Zone policy card, Specific zone).${startDate}`,
     "zone_not_found",
     details,
   );
@@ -228,7 +240,7 @@ export async function discover(
     const details = [user.detail, ...search.details];
     if (search.refused && !user.active)
       throw new SetupStepError(TOKEN_REFUSED, "token_inactive", details);
-    throw zoneMissing(host, details);
+    throw zoneMissing(host, details, search.code9109 === true);
   }
 
   const verified = await tokenIsActive(client, zone.account.id, user);

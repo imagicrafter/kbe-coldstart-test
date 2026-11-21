@@ -14,8 +14,8 @@
   "userConfig": {
     "engine_url": {
       "type": "string",
-      "title": "Engine connector URL",
-      "description": "Your Engine's connector address, ending in /mcp (for example https://kb.example.com/mcp). Shown on your Engine's setup page.",
+      "title": "Your Knowledge Base Engine address (ends in /mcp)",
+      "description": "Paste the connector address from your Engine's sign-in setup page or its Health screen. Example: https://kb.example.com/mcp. Replace the whole box, including any ${...} text already in it.",
       "required": true
     }
   }

@@ -55,7 +55,7 @@ The repository must be reachable by the person's Claude (it is public).
 /plugin install kb-engine@kb-engine
 ```
 
-Claude Code asks for **Engine connector URL** when the plugin is enabled.
+Claude Code asks for **Your Knowledge Base Engine address (ends in /mcp)** when the plugin is enabled.
 Paste the address from your Engine's setup page (it ends in `/mcp`). To
 change it later: `/plugin`, open **kb-engine**, and edit the option. Then
 sign in to the Engine when the connector asks.
@@ -72,10 +72,16 @@ sign in to the Engine when the connector asks.
    Google Calendar.
 4. Say "set up ingest". The `kb-schedule-setup` skill does the rest.
 
-On the Claude app the connector comes from step 1, not from the plugin's
-`.mcp.json` (the app does not ask for the plugin's URL option). If the app
-shows a second, unconfigured `kb-engine` connector from the plugin, leave it
-off.
+**claude.ai asks for the URL at install** (confirmed live, 2026-11-20). Its
+URL box may show the raw text `${user_config.engine_url}`: that is the
+plugin's placeholder, not an address. Clear the whole box and paste your
+Engine address, for example `https://kb.example.com/mcp` (the sign-in setup
+page and the Health screen show it). If you already added the connector in
+step 1, the plugin's copy is the same Engine; keep one of them on.
+
+**No email prompt when you connect?** Expected when this browser is already
+signed in to the Engine's Cloudflare sign-in (for example from opening
+`/app`): Cloudflare reuses that sign-in and Claude connects straight away.
 
 ### Team or Enterprise
 

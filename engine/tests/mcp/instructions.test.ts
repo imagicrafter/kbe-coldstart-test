@@ -15,7 +15,7 @@ const example = () =>
 describe("MCP instructions", () => {
   it("names the Engine from the config", () => {
     const text = buildInstructions(validateEngineConfig(example()));
-    expect(text).toContain("the knowledge base of Acme's AI Engine");
+    expect(text).toContain("the knowledge base of Acme's Knowledge Base Engine");
   });
 
   it("uses a different name when the config changes", () => {
@@ -56,7 +56,7 @@ describe("MCP instructions", () => {
 
   it("still describes the tools when no config has been applied", () => {
     const text = buildInstructions(null);
-    expect(text).toContain("the knowledge base of this AI Engine");
+    expect(text).toContain("the knowledge base of this Knowledge Base Engine");
     expect(text).toContain("**search(query");
     expect(text).toContain("Topics are set by the Engine's owner.");
   });

@@ -605,7 +605,7 @@ The curator changes pages, so it is held more tightly than the summariser
 | The item's text is neutralised and delimited the same way as above (a port of `prompt_guard.py`) | `curator/guard.ts` |
 | It writes only the item owner's pages, only within the item's topics; a new page gets the item's topics. No owner or topic comes from the model | `curator_candidates`, `curator_page_save` (database) |
 | It can change page text, fields and new pages only. Nothing it returns can touch people, grants, topics, sharing or settings | the reply contract, `curator/output.ts` |
-| A reply outside the contract is refused whole: unknown page or field, a value the drawer does not allow, a patch that does not apply, text copied from another page | `curator/output.ts` |
+| A reply outside the contract is refused whole: unknown page or field, a value the drawer does not allow, a patch that does not apply, text copied from another page, a link (`related`) to a page that is neither on the shortlist nor made in the same reply | `curator/output.ts` |
 | Large changes (stage, value, new deal, large text) wait in `curator_reviews` for the owner's yes; only the owner can decide, and only on the app screen `/app/reviews` (no MCP tool can approve) | `curator/policy.ts`, `app_review_decide` (0054) |
 | The tick address takes a shared secret checked against Supabase Vault; the service never holds it. The model key is read from the vault and never logged | `curator_tick_secret_ok`, `curator/model.ts` |
 | Outbound calls: `inference.do-ai.run` is added to the allowlist when the curator first calls the model | `curator/model.ts` |

@@ -25,9 +25,9 @@ export function safeJson(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-/** "Acme's AI Engine" -> "Acme". */
-function brandName(title: string): string {
-  return title.replace(/['’]s AI Engine$/, "") || title;
+/** "Acme's Knowledge Base Engine" (or the older "Acme's AI Engine") -> "Acme". */
+export function brandName(title: string): string {
+  return title.replace(/['’]s (?:AI|Knowledge Base) Engine$/, "") || title;
 }
 
 export function renderPage(
@@ -47,9 +47,10 @@ export function renderPage(
 <link rel="stylesheet" href="/status/assets/dashboard.css?v=${v}">
 </head>
 <body>
+<!--email_off-->
 <div class="shell">
   <aside class="sidebar" aria-label="Engine menu">
-    <div class="brand"><span class="eyebrow">AI Engine</span><h1>${esc(brandName(model.title))}</h1></div>
+    <div class="brand"><span class="eyebrow">Knowledge Base Engine</span><h1>${esc(brandName(model.title))}</h1></div>
     <button class="btn menu-btn" type="button" id="menu-btn" aria-expanded="false" aria-controls="nav"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Menu</button>
     <div class="overall" id="overall"></div>
     <nav class="nav" id="nav"></nav>
@@ -67,6 +68,7 @@ export function renderPage(
     <div id="page"></div>
   </main>
 </div>
+<!--/email_off-->
 <script type="application/json" id="engine-data">${safeJson(model)}</script>
 <script src="/status/assets/dashboard.js?v=${v}" defer></script>
 </body>

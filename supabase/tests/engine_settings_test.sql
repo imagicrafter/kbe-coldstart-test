@@ -25,7 +25,7 @@ create temp table cfg (doc jsonb);
 grant select on cfg to kb_ingest, kb_engine;
 insert into cfg values ('{
   "version": 1,
-  "engine": {"id": "acme", "name": "Acme''s AI Engine",
+  "engine": {"id": "acme", "name": "Acme''s Knowledge Base Engine",
              "owner": {"email": "Owner@Example.com", "names": ["Pat Owner"]}},
   "domains": [
     {"id": "consulting", "label": "Consulting"},

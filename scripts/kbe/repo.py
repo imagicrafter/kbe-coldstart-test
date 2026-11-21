@@ -259,7 +259,7 @@ def _add_init(commands: argparse._SubParsersAction) -> None:
     init.add_argument("--path", metavar="DIR",
                       help="where to clone it (default: ~/knowledge-<engine id>)")
     init.add_argument("--engine-id", help="short id, lower-case letters, digits and dashes")
-    init.add_argument("--engine-name", help='display name, e.g. "Acme\'s AI Engine"')
+    init.add_argument("--engine-name", help='display name, e.g. "Acme\'s Knowledge Base Engine"')
     init.add_argument("--owner-email", help="the owner; becomes the first administrator")
     init.add_argument("--owner-name", action="append", metavar="NAME",
                       help="how the owner appears in meeting notes (repeatable)")

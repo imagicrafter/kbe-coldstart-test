@@ -11,7 +11,7 @@ version: 1
 
 engine:
   id: acme
-  name: "Acme's AI Engine"
+  name: "Acme's Knowledge Base Engine"
   owner:
     email: owner@example.com          # becomes the first administrator
     names: ["Pat Owner"]              # how the owner appears in meeting notes
@@ -64,7 +64,7 @@ models:
 # Optional. Without it the status page shows Knowledge and Security only,
 # built from the sources above.
 dashboard:
-  title: "Acme's AI Engine"
+  title: "Acme's Knowledge Base Engine"
   menus:
     knowledge: [overview, sources, areas, review]
     tools: [connected]

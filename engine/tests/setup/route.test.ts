@@ -48,6 +48,16 @@ describe("GET /setup in setup mode", () => {
     expect(SETUP_CSP).toContain("frame-ancestors 'none'");
   });
 
+  it("offers the sign-in length, 1 year chosen, and says the admin pages stay 12 hours", async () => {
+    const world = createWorld();
+    const html = await (await world.get()).text();
+    expect(html).toMatch(/<select[^>]*name="session"/);
+    expect(html).toMatch(/<option value="8760h" selected>1 year<\/option>/);
+    expect(html).toMatch(/<option value="720h">30 days<\/option>/);
+    expect(html).toMatch(/<option value="24h">1 day<\/option>/);
+    expect(html).toMatch(/12 hours/);
+  });
+
   it("shows the address it was reached on, read-only, and does not ask for it", async () => {
     const world = createWorld();
     const html = await (await world.get()).text();
@@ -427,6 +437,12 @@ describe("POST /setup/apply", () => {
     expect(html).toMatch(/not found \(404\)/);
     expect(html).toContain("https://engine.example.com/mcp");
     expect(html).toMatch(/Delete the Cloudflare API token/);
+    // 2026-11-20: DigitalOcean answered not-found until the hostname was
+    // added to the app's domains. The page says exactly how.
+    expect(html).toMatch(/Add engine\.example\.com to the app in DigitalOcean/);
+    expect(html).toMatch(/Settings.*Domains.*Add domain/s);
+    expect(html).toMatch(/You manage your domain/);
+    expect(html).toMatch(/doctl apps spec get/);
     expect(html).toContain("Created");
     expect(html).not.toContain("Failed");
 

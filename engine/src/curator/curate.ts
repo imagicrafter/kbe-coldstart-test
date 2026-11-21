@@ -59,7 +59,7 @@ async function handleUpdate(item: ClaimedItem, u: PlannedUpdate, page: PageRow, 
     pageKey: page.key,
     kind: "update",
     reasons: verdict.reasons,
-    proposal: { ref, generated: gen, update: { key: u.key, patches: u.patches, fields: u.fields } },
+    proposal: { ref, generated: gen, update: { key: u.key, patches: u.patches, fields: u.fields, related: u.related } },
     baseHash: page.content_hash,
   });
   return { applied: [], queued: 1 };

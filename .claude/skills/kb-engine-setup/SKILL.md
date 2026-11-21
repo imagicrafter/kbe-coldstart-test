@@ -126,7 +126,7 @@ as a short summary and get a yes on the summary.
 **Batch 1: the Engine and its owner**
 1. A short id for the Engine: lower-case letters, digits and dashes (for
    example `acme`). It names the app and the local folder.
-2. A display name (for example "Acme's AI Engine").
+2. A display name (for example "Acme's Knowledge Base Engine").
 3. The owner's email. The owner is the first administrator and the only
    person who can see untagged material. It cannot be changed later.
 4. How the owner's name appears in meeting notes (one or more spellings).
@@ -302,7 +302,7 @@ Build the command from the interview. One `--topic` per topic; add
 `:sensitive` for a sensitive one. `--sources` lists the optional sources.
 
 ```
-python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's AI Engine" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
+python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's Knowledge Base Engine" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
 ```
 
 Show the plan, get a yes, run it again with `--yes` in place of `--dry-run`.
@@ -919,3 +919,13 @@ missing (a different machine), the commands still work with explicit flags:
   need a manual click.
 - Sign-in does not work the instant setup finishes. For the first minute or
   two the hostname may answer "not found (404)".
+- On DigitalOcean the hostname answers "not found" until it is added to the
+  app: app, Settings, Domains, Add domain, "You manage your domain" (or
+  `doctl apps update` with a `domains` entry). See docs/operations.md, "The
+  Engine's hostname on DigitalOcean". The Health screen checks it.
+- The main sign-in (people and Claude's connector) lasts 1 year by default;
+  the setup form offers 1 day or 30 days. The status and setup pages always
+  ask again every 12 hours with a second factor.
+- A restart after the Database screen keeps the claim (the database holds
+  it): no new code; the open setup page keeps working, or reuse the first
+  FIRST RUN code from the log.

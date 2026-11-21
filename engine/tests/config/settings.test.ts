@@ -100,7 +100,7 @@ describe("the settings store", () => {
       envAccess: null,
     });
     const settings = await store.get();
-    expect(settings.config?.engine.name).toBe("Acme's AI Engine");
+    expect(settings.config?.engine.name).toBe("Acme's Knowledge Base Engine");
     expect(settings.access?.source).toBe("database");
     expect(settings.setupState).toBe("complete");
   });

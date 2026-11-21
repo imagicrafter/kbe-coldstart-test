@@ -34,6 +34,17 @@ export async function attemptFail(): Promise<LockState> {
   return parseLockState(await rpc("engine_setup_attempt_fail"));
 }
 
+/**
+ * What the database holds of a first-run claim after the Database screen ran
+ * (migration 0057): whether the setup window is open with a stored code hash,
+ * and the owner it named. Lets a restarted app keep the claim.
+ */
+export async function heldClaim(): Promise<{ held: boolean; owner: string | null }> {
+  const raw = (await rpc("engine_setup_claim_held")) as Record<string, unknown> | null;
+  const owner = typeof raw?.["owner"] === "string" ? (raw["owner"] as string) : null;
+  return { held: raw?.["held"] === true, owner };
+}
+
 export async function codeValid(code: string): Promise<boolean> {
   return (await rpc("engine_setup_code_valid", { p_code: code })) === true;
 }

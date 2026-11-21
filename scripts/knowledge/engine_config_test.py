@@ -286,7 +286,7 @@ def test_falls_back_to_the_database(no_cached_config, monkeypatch):
     from knowledge import supabase_client
 
     monkeypatch.setattr(supabase_client, "get_supabase_ingest", lambda: FakeClient())
-    assert engine_config.get_config().engine_name == "Acme's AI Engine"
+    assert engine_config.get_config().engine_name == "Acme's Knowledge Base Engine"
     assert calls == ["workspace", "engine_config_get"]
     # Cached: a second call does not go back to the database.
     engine_config.get_config()

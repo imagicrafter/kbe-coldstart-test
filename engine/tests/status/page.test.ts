@@ -35,7 +35,7 @@ describe("page shell", () => {
 
   it("sets the title and signed-in line, escaped", () => {
     const html = renderPage(build(), "v", `a"<b>@x.com`);
-    expect(html).toMatch(/<title>Acme&#39;s AI Engine<\/title>/);
+    expect(html).toMatch(/<title>Acme&#39;s Knowledge Base Engine<\/title>/);
     expect(html).toContain("Signed in as a&quot;&lt;b&gt;@x.com");
   });
 

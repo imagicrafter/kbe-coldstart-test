@@ -55,6 +55,7 @@ export function createFakeStore() {
     topics: [{ topic: "clients", label: "Clients", sensitive: false, people: 2 }] as Row[],
     backup: { repo: null, branch: "main", enabled: false, has_token: false, last_status: null, owner_email: OWNER } as Row,
     backupToken: null as string | null,
+    pinned: false,
   };
   const own = (email: string) => email === READER || email === OWNER;
   const rec = (fn: string, ...args: unknown[]) => calls.push({ fn, args });
@@ -170,10 +171,10 @@ export function createFakeStore() {
       needAdmin(email);
       return state.timer;
     },
-    setTimer: async (email, url, every, enabled) => {
-      rec("setTimer", email, url, every, enabled);
+    setTimer: async (email, url, enabled) => {
+      rec("setTimer", email, url, enabled);
       needAdmin(email);
-      state.timer = { ...state.timer, engine_url: url, enabled, job: enabled ? { schedule: `*/${every} * * * *`, active: true } : null };
+      state.timer = { ...state.timer, engine_url: url, enabled, job: enabled ? { schedule: "0 * * * *", active: true } : null };
       return state.timer;
     },
     testTimer: async (email) => {
@@ -205,6 +206,61 @@ export function createFakeStore() {
       needAdmin(email);
       state.backupToken = value;
       state.backup = { ...state.backup, has_token: true };
+    },
+    knowledgeTree: async (email) => {
+      rec("knowledgeTree", email);
+      if (!own(email)) throw new McpAppError("forbidden", "not active");
+      return email === READER
+        ? { counts: { organisations: 1, people: 1234 }, recent: [{ id: PAGE_ID, title: "Acme <Corp>", drawer: "organisations" }], pinned: state.pinned ? [{ id: PAGE_ID, title: "Acme <Corp>", drawer: "organisations" }] : [] }
+        : { counts: {}, recent: [], pinned: [] };
+    },
+    drawerPages: async (email, q) => {
+      rec("drawerPages", email, q);
+      const rows = email === READER && q.drawer === "organisations"
+        ? [{ id: PAGE_ID, key: "acme.com", title: "Acme <Corp>", status: "current", topics: ["clients"], fields: { role: "client", last_contact: "2026-11-01" }, updated_at: "2026-01-01T00:00:00Z", stale: true, summary_pending: false }]
+        : [];
+      return { total: email === READER && q.drawer === "organisations" ? 120 : 0, rows, topics: rows.length ? ["clients"] : [], offset: q.offset, limit: q.limit };
+    },
+    pageView: async (email, id) => {
+      rec("pageView", email, id);
+      return email === READER && id === PAGE_ID
+        ? { ...state.page, owner: READER, created_at: "2026-11-01T00:00:00Z", reviewed: null, pinned: state.pinned, summary_pending: true }
+        : null;
+    },
+    pageLinks: async (email, id) => {
+      rec("pageLinks", email, id);
+      return email === READER && id === PAGE_ID
+        ? { out: [{ key: "pat@acme.com", reason: "related", id: HIST_ID, title: "Pat", drawer: "people" }, { key: "ghost:none", reason: "related", id: null }], in: [{ id: REVIEW_ID, key: "project:x", title: "Project <X>", drawer: "projects" }] }
+        : null;
+    },
+    pin: async (email, id, pin) => {
+      rec("pin", email, id, pin);
+      if (email !== READER || id !== PAGE_ID) return false;
+      state.pinned = pin;
+      return true;
+    },
+    markReviewed: async (email, id) => {
+      rec("markReviewed", email, id);
+      return email === READER && id === PAGE_ID;
+    },
+    indexing: async (email) => {
+      needAdmin(email);
+      return {
+        pages: 1500, summaries_pending: 3, items_waiting: 2, items_flagged: 1, items_failed: 4,
+        last_run: { started_at: "2026-11-20T10:00:00Z", status: "ok", stats: { items: 1, applied: 3 } },
+        curator: { enabled: true, model: "openai-gpt-oss-120b", has_engine_url: true },
+        has_model_key: true, backup: { enabled: true, last_finished_at: "2026-11-20T03:00:00Z", last_status: "done" },
+      };
+    },
+    reindexPage: async (email, id) => {
+      rec("reindexPage", email, id);
+      needAdmin(email);
+      return id === PAGE_ID;
+    },
+    rerunSummaries: async (email) => {
+      rec("rerunSummaries", email);
+      needAdmin(email);
+      return 3;
     },
     health: async (email) => {
       needAdmin(email);

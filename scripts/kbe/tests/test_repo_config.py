@@ -9,7 +9,7 @@ from kbe.errors import KbeError, UsageError
 
 ANSWERS = repo_config.Answers(
     engine_id="acme",
-    engine_name="Acme's AI Engine",
+    engine_name="Acme's Knowledge Base Engine",
     owner_email="owner@example.com",
     owner_names=("Pat Owner",),
     topics=(
@@ -70,7 +70,7 @@ def test_the_config_names_the_repo_the_owner_the_topics_and_the_sources():
     config = repo_config.build_config(ANSWERS, "acme/knowledge")
     assert config["engine"] == {
         "id": "acme",
-        "name": "Acme's AI Engine",
+        "name": "Acme's Knowledge Base Engine",
         "owner": {
             "email": "owner@example.com", "names": ["Pat Owner"], "emails": ["owner@example.com"],
         },

@@ -357,7 +357,7 @@ describe("an Engine with no add-ons (config/engine.example.yaml)", () => {
   });
 
   it("uses the engine name, tag prefix and topic labels from the config", () => {
-    expect(plain.title).toBe("Acme's AI Engine");
+    expect(plain.title).toBe("Acme's Knowledge Base Engine");
     expect(plain.tagPrefix).toBe("kx/");
     expect(plain.tools.connectorUrl).toBe("https://engine.example.com/mcp");
   });

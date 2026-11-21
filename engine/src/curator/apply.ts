@@ -32,7 +32,7 @@ export type Generated = { readonly by: "curator"; readonly model: string; readon
 /** The whole page after an update: patches applied, fields merged, source added. */
 export function updatedPage(
   page: PageRow,
-  u: Pick<PlannedUpdate, "patches" | "fields">,
+  u: Pick<PlannedUpdate, "patches" | "fields"> & { readonly related?: readonly string[] },
   ref: SourceRef,
   generated: Generated,
 ): Record<string, unknown> {
@@ -47,7 +47,7 @@ export function updatedPage(
     topics: page.topics,
     status: page.status,
     tags: page.tags,
-    related: page.related,
+    related: [...new Set([...page.related, ...(u.related ?? [])])],
     sources: [...page.sources, ref],
     generated,
     verified: page.verified,
@@ -80,6 +80,7 @@ export function newPage(
     description: n.description?.trim() || undefined,
     fields: n.fields,
     topics,
+    related: [...n.related],
     status: "unreviewed",
     sources: [ref],
     generated,

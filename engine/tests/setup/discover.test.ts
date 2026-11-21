@@ -69,6 +69,20 @@ describe("which check failed, in words and in the details", () => {
     expect(err.details.join("\n")).toMatch(/403.*10000/);
   });
 
+  it("an active token refused the zone with 9109 suggests the token's start date and Zone Read", async () => {
+    // 2026-11-20 cold start: verify said active, every zone call said 403
+    // [9109]; the token had a start date in the future.
+    const err = await failure({ denied: ["zone"], deniedCode: 9109 });
+    expect(err.message).toMatch(/start date/i);
+    expect(err.message).toMatch(/Zone - Zone - Read/);
+    expect(err.details.join("\n")).toMatch(/403.*9109/);
+  });
+
+  it("a plain 403 without 9109 does not talk about start dates", async () => {
+    const err = await failure({ denied: ["zone"] });
+    expect(err.message).not.toMatch(/start date/i);
+  });
+
   it("a token neither verify route accepts lists both routes' answers", async () => {
     const err = await failure({ tokenOwner: "account-disabled" });
     expect(err.code).toBe("token_inactive");

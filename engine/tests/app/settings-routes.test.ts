@@ -80,6 +80,17 @@ describe("the template", () => {
     expect(w.fake.state.templates).toEqual(["consulting", "property"]);
   });
 
+  it("a template that adds no drawers says it uses the base drawers, with no empty 'Adds:'", async () => {
+    const w = world();
+    const html = await (await w.http.get("/setup/template", ASSERT.owner)).text();
+    const solo = /value="solo"[^]*?<\/label>/.exec(html)?.[0] ?? "";
+    expect(solo).toMatch(/Uses the 8 base drawers/);
+    expect(solo).not.toMatch(/Adds:/);
+    expect(solo).not.toMatch(/Adds no drawers/);
+    const consulting = /value="consulting"[^]*?<\/label>/.exec(html)?.[0] ?? "";
+    expect(consulting).toMatch(/Adds: \S/);
+  });
+
   it("refuses a name that is not a template", async () => {
     const w = world();
     const csrf = csrfIn(await (await w.http.get("/setup/template", ASSERT.owner)).text());
@@ -124,23 +135,35 @@ describe("topics and people", () => {
 });
 
 describe("the timer", () => {
-  it("suggests the Engine's own tick address and saves it", async () => {
+  it("shows the whole tick address, one on/off switch and no interval choice", async () => {
     const w = world();
     const html = await (await w.http.get("/setup/timer", ASSERT.owner)).text();
-    expect(html).toContain('value="https://engine.example.com/internal/curator/tick"');
+    // The full address as text (a narrow input box cut it off live, 2026-11-20).
+    expect(html).toMatch(/<code class="address">https:\/\/engine\.example\.com\/internal\/curator\/tick<\/code>/);
+    expect(html).not.toMatch(/name="every"/);
+    expect(html).not.toMatch(/minutes<\/option>/);
+    expect(html).toMatch(/name="enabled"/);
+    expect(html).toMatch(/new items arrive/i);
+    expect(html).toMatch(/every hour/i);
+    expect(html).toMatch(/Test the timer/);
     expect(html).toMatch(/bypass/);
-    const res = await w.http.post("/setup/timer", { csrf: csrfIn(html), engine_url: "https://engine.example.com/internal/curator/tick", every: "15", enabled: "yes" }, ASSERT.owner);
-    expect(res.status).toBe(200);
-    expect(w.fake.calls.find((c) => c.fn === "setTimer")?.args).toEqual([OWNER, "engine.example.com", 15, true]);
   });
 
-  it("refuses another address or interval", async () => {
+  it("saves the switch for the Engine's own host", async () => {
+    const w = world();
+    const html = await (await w.http.get("/setup/timer", ASSERT.owner)).text();
+    const res = await w.http.post("/setup/timer", { csrf: csrfIn(html), enabled: "yes" }, ASSERT.owner);
+    expect(res.status).toBe(200);
+    expect(w.fake.calls.find((c) => c.fn === "setTimer")?.args).toEqual([OWNER, "engine.example.com", true]);
+    expect(await res.text()).toMatch(/new items arrive/i);
+  });
+
+  it("refuses another address", async () => {
     const w = world();
     const csrf = csrfIn(await (await w.http.get("/setup/timer", ASSERT.owner)).text());
-    expect((await w.http.post("/setup/timer", { csrf, engine_url: "https://evil.example.com/steal", every: "5" }, ASSERT.owner)).status).toBe(400);
-    expect((await w.http.post("/setup/timer", { csrf, engine_url: "https://evil.example.com/internal/curator/tick", every: "5", enabled: "yes" }, ASSERT.owner)).status).toBe(400);
+    expect((await w.http.post("/setup/timer", { csrf, engine_url: "https://evil.example.com/steal" }, ASSERT.owner)).status).toBe(400);
+    expect((await w.http.post("/setup/timer", { csrf, engine_url: "https://evil.example.com/internal/curator/tick", enabled: "yes" }, ASSERT.owner)).status).toBe(400);
     expect(w.fake.calls.some((c) => c.fn === "setTimer")).toBe(false);
-    expect((await w.http.post("/setup/timer", { csrf, engine_url: "https://engine.example.com/internal/curator/tick", every: "1" }, ASSERT.owner)).status).toBe(400);
   });
 
   it("a test poke that Cloudflare stops says to add the bypass", async () => {
@@ -161,6 +184,24 @@ describe("health", () => {
     expect(html).toContain("https://engine.example.com/mcp");
     expect(html).toContain("0054_app_screens.sql");
     expect(html).toMatch(/Model key<\/td><td>not set/);
+  });
+
+  it("checks that the hostname reaches this app, and says how to add it in DigitalOcean when not", async () => {
+    const seen: string[] = [];
+    const ok = createScreens({ hostCheck: async (h) => { seen.push(h); return { ok: true, detail: "answers" }; } });
+    const okApp = new Hono();
+    okApp.route("/setup", makeSettingsRoutes(() => ok.deps));
+    const good = await (await client(okApp).get("/setup/health", ASSERT.owner)).text();
+    expect(seen).toEqual(["engine.example.com"]);
+    expect(good).toMatch(/OK<\/td><td>Hostname reaches the app/);
+    expect(good).not.toMatch(/Add engine\.example\.com to the app in DigitalOcean/);
+
+    const bad = createScreens({ hostCheck: async () => ({ ok: false, detail: "DigitalOcean answered 404" }) });
+    const badApp = new Hono();
+    badApp.route("/setup", makeSettingsRoutes(() => bad.deps));
+    const html = await (await client(badApp).get("/setup/health", ASSERT.owner)).text();
+    expect(html).toMatch(/Needs work<\/td><td>Hostname reaches the app<\/td><td>DigitalOcean answered 404/);
+    expect(html).toMatch(/Add engine\.example\.com to the app in DigitalOcean/);
   });
 
   it("shows a failing embed check without breaking the page", async () => {

@@ -59,7 +59,9 @@ The second form does the real work, including model calls.
 
 ### The curator timer
 
-On an Engine set up from the app, use the **Timer** setup screen (`/setup/timer`): it makes the timer secret inside the database, schedules the cron job, and has a **Test the timer now** button that shows what the poke got back. The model key goes in on the **Model key** screen, and the templates on the **Template** screen (they are no longer a column of `curator_settings`; migration 0054 moved them to `engine_templates`). The SQL below is the same thing by hand.
+When the curator runs (migration 0057, decided 2026-11-20): there is no interval to choose. New source items wake it at once (a trigger on `source_items`), at most once every 2 minutes; a minute job (`kbe-curator-wake`, plain SQL) wakes it again only when items arrived since the last wake are still waiting; and a fixed hourly tick (`kbe-curator-tick`, minute 0) always runs as the safety net for retries, missed items, summaries, history pruning and the nightly backup. An hour with nothing waiting spends no model tokens.
+
+On an Engine set up from the app, use the **Timer** setup screen (`/setup/timer`): it shows the full tick address, has one switch (curator on or off), makes the timer secret inside the database, schedules both cron jobs, and has a **Test the timer now** button that shows what the poke got back. The model key goes in on the **Model key** screen, and the templates on the **Template** screen (they are no longer a column of `curator_settings`; migration 0054 moved them to `engine_templates`). The SQL below is the same thing by hand.
 
 The curator and the service's own chores run when Supabase cron pokes
 `POST /internal/curator/tick`. Nothing in this repository creates the cron
@@ -75,7 +77,8 @@ update workspace.curator_settings
        model = 'openai-gpt-oss-120b',      -- or 'deepseek-v4.1-flash'
        enabled = true;
 -- 3. The timer (needs pg_cron and pg_net):
-select cron.schedule('kbe-curator-tick', '*/5 * * * *', 'select workspace.curator_tick_poke()');
+select cron.schedule('kbe-curator-tick', '0 * * * *', 'select workspace.curator_tick_poke()');
+select cron.schedule('kbe-curator-wake', '* * * * *', 'select workspace.curator_wake(true)');
 ```
 
 (With another schema name, use it in place of `workspace`.)
@@ -108,8 +111,27 @@ whose sign-in was set up earlier needs the sign-in setup run once more, or
 the pokes are stopped at the edge (the Timer screen's test shows 302 or 403).
 
 **Stopping it.** `update workspace.curator_settings set enabled = false;`
-stops curation at the next run; the chores go on. `select
-cron.unschedule('kbe-curator-tick');` stops the timer.
+stops curation at the next run and stops the wakes; the chores go on. `select
+cron.unschedule('kbe-curator-tick'); select cron.unschedule('kbe-curator-wake');`
+stops the timer.
+
+## The Engine's hostname on DigitalOcean
+
+DigitalOcean's edge only answers for hostnames listed on the app; any other
+Host gets "not found". The sign-in setup points DNS at the app in Cloudflare
+but does not add the hostname to the app (seen live 2026-11-20). Add it once:
+
+1. DigitalOcean: your app, **Settings**, **Domains**, **Add domain**.
+2. Type the hostname. Choose **You manage your domain** (Cloudflare holds the
+   DNS; do not let DigitalOcean change it). Save; the app redeploys.
+3. Or: `doctl apps spec get APP_ID > spec.yaml`, add
+   `domains: [{domain: <host>, type: PRIMARY}]` at the top level, then
+   `doctl apps update APP_ID --spec spec.yaml`.
+
+The Health screen (`/setup/health`) checks it: "Hostname reaches the app"
+posts to the timer path without a secret and expects this app's own 401.
+Setup does not do this itself: it would need a DigitalOcean token with
+rights over every app on the account, one more secret to ask for and keep.
 
 ## The issue log
 

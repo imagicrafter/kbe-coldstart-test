@@ -1,7 +1,8 @@
 import type { Context } from "hono";
 import { esc } from "../status/page.js";
-import { setupAssetVersion } from "../setup/assets.js";
+import { shell, type Area } from "./shell.js";
 import { SETUP_CSP } from "../setup/page.js";
+import { fillChrome, getChrome } from "./chrome.js";
 
 /**
  * Plain server-rendered pages for the app screens, in the setup page's style:
@@ -11,59 +12,10 @@ import { SETUP_CSP } from "../setup/page.js";
  */
 
 export { esc };
-
-export type Area = "setup" | "app";
-
-export type NavItem = { readonly href: string; readonly label: string };
-
-export const SETUP_NAV: readonly NavItem[] = [
-  { href: "/setup", label: "Sign-in" },
-  { href: "/setup/people", label: "Topics and people" },
-  { href: "/setup/template", label: "Template" },
-  { href: "/setup/model", label: "Model key" },
-  { href: "/setup/timer", label: "Timer" },
-  { href: "/setup/backup", label: "Backup" },
-  { href: "/setup/health", label: "Health" },
-];
-
-export const APP_NAV: readonly NavItem[] = [
-  { href: "/app", label: "Home" },
-  { href: "/app/reviews", label: "Waiting for your yes" },
-  { href: "/app/flagged", label: "Flagged items" },
-  { href: "/app/pages", label: "Pages" },
-];
-
-function nav(items: readonly NavItem[], here: string): string {
-  const links = items
-    .map((i) => (i.href === here ? `<strong>${esc(i.label)}</strong>` : `<a href="${esc(i.href)}">${esc(i.label)}</a>`))
-    .join(" · ");
-  return `<p class="hint">${links}</p>`;
-}
+export { APP_NAV, SETUP_NAV, type Area, type NavItem } from "./shell.js";
 
 export function appLayout(area: Area, here: string, title: string, body: string): string {
-  const css = area === "setup" ? "/setup/assets/setup.css" : "/app/assets/setup.css";
-  const eyebrow = area === "setup" ? "AI Engine setup" : "AI Engine";
-  const items = area === "setup" ? SETUP_NAV : APP_NAV;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<meta name="robots" content="noindex">
-<title>${esc(title)}</title>
-<link rel="stylesheet" href="${css}?v=${encodeURIComponent(setupAssetVersion())}">
-</head>
-<body>
-<main>
-<p class="eyebrow">${esc(eyebrow)}</p>
-${nav(items, here)}
-<h1>${esc(title)}</h1>
-${body}
-</main>
-</body>
-</html>
-`;
+  return shell(area, here, title, body);
 }
 
 export function card(inner: string, extra = ""): string {
@@ -91,7 +43,7 @@ export function sendPage(c: Context, status: PageStatus, html: string): Response
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
   c.header("Referrer-Policy", "same-origin");
-  return c.html(html, status);
+  return c.html(fillChrome(html, getChrome(c)), status);
 }
 
 export function sendMessage(c: Context, area: Area, status: PageStatus, title: string, text: string): Response {

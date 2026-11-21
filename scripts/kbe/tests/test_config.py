@@ -272,7 +272,7 @@ def test_db_store_acts_as_kb_ingest(base):
     sent = runner.calls[1]["stdin"]
     assert sent.startswith("set local role kb_ingest;")
     assert "workspace.engine_config_apply($kbe_" in sent and "::jsonb, 'abc')" in sent
-    assert "Acme's AI Engine" in sent
+    assert "Acme's Knowledge Base Engine" in sent
     assert "fake-local-pw" not in " ".join(runner.calls[1]["argv"])
 
 

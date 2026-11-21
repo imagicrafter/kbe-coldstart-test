@@ -138,7 +138,7 @@ describe("a config with no dashboard section", () => {
 
   it("still yields a page: Knowledge, Security and Support, titled with the engine name", () => {
     const cfg = bare();
-    expect(cfg.dashboard.title).toBe("Acme's AI Engine");
+    expect(cfg.dashboard.title).toBe("Acme's Knowledge Base Engine");
     expect(cfg.dashboard.menus).toEqual({
       knowledge: ["overview", "sources", "areas", "review"],
       workers: [],

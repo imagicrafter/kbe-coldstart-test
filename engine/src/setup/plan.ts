@@ -1,4 +1,4 @@
-import type { Level, SetupInputs } from "./inputs.js";
+import { DEFAULT_SESSION, SESSION_NAMES, type Level, type SessionLength, type SetupInputs } from "./inputs.js";
 import type { JsonObject } from "./merge.js";
 
 /**
@@ -84,8 +84,12 @@ export type Plan = {
   readonly steps: readonly PlanStep[];
 };
 
+/** The timer bypass app's own (unused) session length. */
 const ENGINE_SESSION = "24h";
 const ADMIN_SESSION = "12h";
+
+/** The main sign-in length: the one chosen on the form, else 1 year. */
+const mainSession = (inputs: SetupInputs): SessionLength => inputs.session ?? DEFAULT_SESSION;
 
 const takeoverLine = (inputs: SetupInputs): string =>
   inputs.replaceExisting
@@ -172,7 +176,7 @@ function enginePolicy(inputs: SetupInputs): PolicyStep {
     ],
     name: `KB Engine sign-in: ${inputs.host}`,
     include: signInRules(inputs),
-    sessionDuration: ENGINE_SESSION,
+    sessionDuration: mainSession(inputs),
   };
 }
 
@@ -182,7 +186,7 @@ function engineApp(inputs: SetupInputs): ApplicationStep {
     kind: "application",
     title: `Put Cloudflare sign-in in front of ${inputs.host}`,
     lines: [
-      `Application for ${inputs.host} (every path), sign-in by one-time PIN, sessions last 24 hours.`,
+      `Application for ${inputs.host} (every path), sign-in by one-time PIN, sessions last ${SESSION_NAMES[mainSession(inputs)]}.`,
       "Managed OAuth is switched on, so Claude can connect.",
       `Allowed redirect addresses: ${CLAUDE_REDIRECT_URIS.join(", ")}, plus apps on this computer (localhost and loopback).`,
       "Any other sign-in rule attached to this application is detached.",
@@ -197,7 +201,7 @@ function engineApp(inputs: SetupInputs): ApplicationStep {
       type: "self_hosted",
       domain: inputs.host,
       destinations: [{ type: "public", uri: inputs.host }],
-      session_duration: ENGINE_SESSION,
+      session_duration: mainSession(inputs),
       app_launcher_visible: false,
       oauth_configuration: {
         enabled: true,

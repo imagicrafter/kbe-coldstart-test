@@ -153,13 +153,24 @@ describe("the plan", () => {
     ]);
   });
 
-  it("writes the session length on each rule, matching its application", () => {
+  it("writes the session length on each rule, matching its application: main 1 year by default, admin 12h", () => {
     const length = (id: string) =>
       step<ApplicationStep>(base, id).body["session_duration"];
-    expect(step<PolicyStep>(base, "engine_policy").sessionDuration).toBe("24h");
-    expect(length("engine_app")).toBe("24h");
+    expect(step<PolicyStep>(base, "engine_policy").sessionDuration).toBe("8760h");
+    expect(length("engine_app")).toBe("8760h");
     expect(step<PolicyStep>(base, "admin_policy").sessionDuration).toBe("12h");
     expect(length("admin_app")).toBe("12h");
+    expect(step<ApplicationStep>(base, "admin_app").body["mfa_config"]).toMatchObject({ session_duration: "12h" });
+    expect(step<ApplicationStep>(base, "engine_app").lines.join(" ")).toMatch(/sessions last 1 year/);
+  });
+
+  it("uses the chosen main sign-in length; the admin pages stay 12h with a second factor", () => {
+    const month = { ...base, session: "720h" as const };
+    expect(step<ApplicationStep>(month, "engine_app").body["session_duration"]).toBe("720h");
+    expect(step<PolicyStep>(month, "engine_policy").sessionDuration).toBe("720h");
+    expect(step<ApplicationStep>(month, "engine_app").lines.join(" ")).toMatch(/sessions last 30 days/);
+    expect(step<ApplicationStep>(month, "admin_app").body["session_duration"]).toBe("12h");
+    expect(step<ApplicationStep>(month, "admin_app").secondFactor).toBe(true);
   });
 
   it("takes over what is already there only when asked, and says which in words", () => {

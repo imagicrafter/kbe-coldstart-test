@@ -65,6 +65,8 @@ export type FakeOptions = {
    * "zone" instead makes it answer 403.)
    */
   readonly zoneListEmpty?: boolean;
+  /** Cloudflare's error code on a denied call (default 10000; 9109 seen live). */
+  readonly deniedCode?: number;
 };
 
 export type FakeCloudflare = {
@@ -284,7 +286,7 @@ export function createFakeCloudflare(
       (options.denied?.includes(area) ||
         (write && options.readOnly?.includes(area)))
     )
-      return fail(403, 10000, "Authentication error");
+      return fail(403, options.deniedCode ?? 10000, "Authentication error");
     return route(method, url, body);
   };
 

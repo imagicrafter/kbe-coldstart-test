@@ -27,12 +27,14 @@ import { setupAssets } from "./setup/assets.js";
 import { setupDeps } from "./setup/defaults.js";
 import { currentMode, isSetupPath, type EngineMode } from "./setup/mode.js";
 import { makeSetupRoutes } from "./setup/route.js";
+import { notFoundPage, wrongHost } from "./app/not-found.js";
 import { TICK_PATH, makeTickRoute } from "./curator/route.js";
 import { firstRunDeps, screenDeps } from "./app/defaults.js";
 import { liveFirstRunDeps, startFirstRun } from "./app/first-run.js";
 import { firstRunGate, makeFirstRunRoutes } from "./app/first-run-routes.js";
 import { makeOwnerRoutes } from "./app/owner-routes.js";
 import { makeSettingsRoutes } from "./app/settings-routes.js";
+import { makeIndexingRoutes } from "./app/indexing-routes.js";
 import { makeBackupRoutes } from "./app/backup-routes.js";
 
 const app = new Hono();
@@ -85,13 +87,14 @@ app.use("*", async (c, next) => {
     host !== "localhost" &&
     !host.startsWith("127.")
   ) {
-    return c.json(
-      { error: { code: "forbidden", message: "Invalid host" } },
-      421,
-    );
+    return wrongHost(c, mode.access.host);
   }
   return next();
 });
+
+// "/setup/" and "/app/" (a trailing slash) mean the screen without it.
+app.get("/setup/", (c) => c.redirect("/setup", 301));
+app.get("/app/", (c) => c.redirect("/app", 301));
 
 // ── /setup ──────────────────────────────────────────────────────────────────
 // The one-time sign-in setup page (setup/route.ts). A small body limit and
@@ -110,6 +113,7 @@ app.use("/setup/*", firstRunGate(firstRunDeps));
 app.route("/setup", makeFirstRunRoutes(firstRunDeps));
 // The setup screens after sign-in (administrators, app/settings-routes.ts).
 app.route("/setup", makeSettingsRoutes(screenDeps));
+app.route("/setup", makeIndexingRoutes(screenDeps));
 app.route("/setup", makeBackupRoutes(screenDeps));
 app.route("/setup", makeSetupRoutes(setupDeps));
 
@@ -266,6 +270,9 @@ app.use("/mcp", postAuthRateLimit);
 app.all("/mcp", (c) =>
   handleMcpRequest(c.req.raw, c.var["auth"] as { sub: string; email: string }),
 );
+
+// Anything else: a page with the menu under /setup and /app, plain text elsewhere.
+app.notFound(notFoundPage);
 
 // ── Server startup ─────────────────────────────────────────────────────────
 if (env.NODE_ENV !== "test") {
