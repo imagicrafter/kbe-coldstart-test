@@ -7,6 +7,7 @@ import { checkReply, type CheckResult, type PlannedNewPage, type PlannedUpdate }
 import { judgeNewPage, judgeUpdate } from "./policy.js";
 import { dropRepeats } from "./dedupe.js";
 import { consult, type ConsultLabel } from "./consult.js";
+import { preferOpen } from "./consensus.js";
 import { logger } from "../log/logger.js";
 import { missingRequired, requiredNote } from "./required.js";
 import { SYSTEM_PROMPT, buildPrompt } from "./prompt.js";
@@ -135,7 +136,8 @@ export async function curateItem(item: ClaimedItem, deps: CurateDeps): Promise<I
     ask(item, shortlist, d, note).catch((err: unknown) => ({
       ok: false as const, reason: err instanceof Error ? err.message : "model call failed", tokens: 0,
     }));
-  const consulted = await consult(deps, safeAsk);
+  const vote = { schema: deps.schema, shortlist };
+  const consulted = await consult(deps, safeAsk, vote);
   let tokens = consulted.tokens;
   let checked: CheckResult = consulted.result;
   if (!checked.ok) return fail(item, deps, checked.reason, done);
@@ -160,7 +162,7 @@ export async function curateItem(item: ClaimedItem, deps: CurateDeps): Promise<I
     }
   }
   logger.info({ item: item.id, consensus: consulted.label, uncertain: consulted.uncertain.length, tokens }, "curator: item decided");
-  const plan = dropRepeats(checked.plan, shortlist);
+  const plan = dropRepeats(preferOpen(checked.plan, vote), shortlist);
   const checkFailed = missing.length > 0
     ? `check failed: the item matches the ${missing.map((id) => deps.schema.drawers.find((d) => d.id === id)?.label ?? id).join(", ")} signal but no page there was made or updated`
     : null;

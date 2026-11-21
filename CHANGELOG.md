@@ -9,6 +9,15 @@ An entry says so when updating needs more than the steps in
 
 ## Unreleased
 
+### Fixed
+
+- **Consensus no longer drops a deal over its name.** Runs compare deals and
+  projects by their organisation (`key_rule.anchor` in the template), not by
+  the free slug, and an open deal for that organisation is updated instead of
+  a second one made. Field values are normalised before the vote ($12,000 =
+  12000, dates by day, enums by case); free text votes only on being set.
+  Indexing shows each uncertain decision's three proposals side by side.
+
 ### Changed
 
 - **Product name: Quantabase.** The app, the status page, the plugin and the

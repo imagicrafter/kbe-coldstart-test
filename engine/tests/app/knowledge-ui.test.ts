@@ -247,7 +247,9 @@ describe("Indexing (administrators)", () => {
     const html = await (await w.http.get("/setup/indexing", ASSERT.owner)).text();
     expect(html).toContain("Uncertain decisions");
     expect(html).toContain("Mail from &lt;Acme&gt;");
-    expect(html).toContain("&quot;lead&quot; · &quot;proposal&quot; · &quot;won&quot;");
+    // The three proposals side by side, one column per run.
+    for (const h of ["Run 1", "Run 2", "Tiebreak"]) expect(html).toContain(`<th>${h}</th>`);
+    expect(html).toContain("<td><code>&quot;lead&quot;</code></td><td><code>&quot;proposal&quot;</code></td><td><code>&quot;won&quot;</code></td>");
     expect(html).toContain("deepseek-v4.1-flash");
   });
 

@@ -10,6 +10,10 @@ drawers:
     key_rule:
       kind: slug
       text: "deal: followed by the organisation domain and a short name, e.g. deal:example.com-2026-audit."
+      # One open deal per organisation: consensus runs are compared by
+      # organisation, and an open deal (stage not won or lost) is updated,
+      # never duplicated.
+      anchor: { field: organisation, single_open: { field: stage, closed: [won, lost] } }
     fields:
       - { name: organisation, kind: key }
       - { name: stage, kind: enum, values: [lead, qualified, proposal, negotiation, won, lost] }

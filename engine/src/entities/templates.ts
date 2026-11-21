@@ -49,8 +49,22 @@ const Drawer = z
         // source_id keys only: the sources whose items carry this key
         // ("<prefix>:<the item's source id>"), e.g. [fireflies, calendar].
         sources: z.array(Slug).optional(),
+        // slug keys only: the field naming what a page belongs to (a deal's
+        // organisation). Consensus runs name slugs freely, so the vote
+        // compares these pages by drawer + anchor value, not by key.
+        // single_open: at most one open page per anchor value; an open page
+        // there is updated instead of a new one made. A page is closed when
+        // its single_open.field holds one of single_open.closed.
+        anchor: z
+          .object({
+            field: Slug,
+            single_open: z.object({ field: Slug, closed: z.array(z.string().min(1)).min(1) }).strict().optional(),
+          })
+          .strict()
+          .optional(),
       })
-      .strict(),
+      .strict()
+      .refine((r) => r.anchor === undefined || r.kind === "slug", { message: "only a slug key has an anchor" }),
     // The app's icon for this drawer (a name from engine/src/app/icons.ts).
     icon: Slug.optional(),
     fields: z.array(Field),

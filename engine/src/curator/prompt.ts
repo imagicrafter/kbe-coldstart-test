@@ -81,7 +81,11 @@ function describeDrawer(d: DrawerDef, present: ReadonlySet<string>): string {
   const when = d.signals.length > 0 ? `; make one when: ${d.signals.join("; ")}` : "";
   const notes = d.curator?.notes ?? [];
   const also = notes.length > 0 ? `; also: ${notes.join("; ")}` : "";
-  return `- ${d.id}: key ${key}; sections ${d.sections.join(", ")}; fields ${fields || "none"}${link}${when}${also}`;
+  const single = d.key_rule.anchor?.single_open;
+  const one = single
+    ? `; one open page per ${d.key_rule.anchor?.field} (open: ${single.field} not ${single.closed.join("/")}): if the shortlist has one, update it`
+    : "";
+  return `- ${d.id}: key ${key}; sections ${d.sections.join(", ")}; fields ${fields || "none"}${link}${when}${also}${one}`;
 }
 
 function renderPage(p: PageRow): string {

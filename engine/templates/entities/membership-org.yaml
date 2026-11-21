@@ -10,6 +10,7 @@ drawers:
     key_rule:
       kind: slug
       text: "deal: followed by the prospect's domain and a short name."
+      anchor: { field: organisation, single_open: { field: stage, closed: [won, lost] } }
     fields:
       - { name: organisation, kind: key }
       - { name: stage, kind: enum, values: [lead, engaged, site_visit, proposal, won, lost] }

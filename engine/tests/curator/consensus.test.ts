@@ -55,9 +55,9 @@ describe("decisions compare structure, not wording", () => {
     expect(m.plan.newPages[0]!.fields["stage"]).toBe("lead");
     expect(m.uncertain).toEqual([]);
     const u = merge([plan(reply("lead")), plan(reply("proposal")), plan(reply("won"))]);
-    expect(u.uncertain.map((d) => d.decision)).toEqual([`field:${DEAL}:stage`]);
+    expect(u.uncertain.map((d) => d.decision)).toEqual([`field:${DEAL}:stage`]); // no vote context: compared by key
     expect(u.plan.newPages[0]!.fields["stage"]).toBeUndefined();
-    expect(u.uncertain[0]!.proposals).toEqual(['"lead"', '"proposal"', '"won"']);
+    expect(u.uncertain[0]!.proposals).toEqual([`${DEAL} stage = "lead"`, `${DEAL} stage = "proposal"`, `${DEAL} stage = "won"`]);
   });
 });
 
@@ -98,7 +98,7 @@ describe("consensus curation", () => {
     const deal = f.saves.find((s) => s.page["key"] === DEAL)!;
     expect((deal.page["fields"] as Record<string, unknown>)["stage"]).toBeUndefined();
     expect(f.uncertain).toEqual([
-      expect.objectContaining({ itemId: NORTHWIND_EMAIL.id, decision: `field:${DEAL}:stage`, proposals: ['"lead"', '"proposal"', '"won"'] }),
+      expect.objectContaining({ itemId: NORTHWIND_EMAIL.id, decision: `field:deals@${ORG}:stage`, proposals: [`${DEAL} stage = "lead"`, `${DEAL} stage = "proposal"`, `${DEAL} stage = "won"`] }),
     ]);
   });
 });

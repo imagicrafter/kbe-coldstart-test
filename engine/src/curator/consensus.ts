@@ -1,37 +1,170 @@
-import type { Plan, PlannedNewPage, PlannedUpdate } from "./output.js";
+import type { DrawerDef, EntitySchema } from "../entities/templates.js";
+import type { Candidate, Plan, PlannedNewPage, PlannedUpdate } from "./output.js";
 
 /**
  * Consensus curation. Runs are compared on their structured decisions only,
  * never on wording:
  *
- *   page:<drawer>:<key>   "create" or "patch" (an update names a shortlist key;
- *                         its drawer is not in the reply, so it is "?")
- *   field:<key>:<name>    the value, as JSON
+ *   page:<drawer>:<target>   "create" or "patch"
+ *   field:<target>:<name>    the value, normalised for its kind
+ *
+ * The target is the page key, except in a drawer whose key rule has an
+ * `anchor` (templates YAML): there a page is "<drawer>@<anchor value>", so
+ * three runs that name the same organisation's deal three different slugs
+ * vote on one deal. The canonical key comes from the first run on the winning
+ * side. With `anchor.single_open`, a new page whose anchor already has an open
+ * page on the shortlist becomes an update of that page (see preferOpen).
+ *
+ * Field values are normalised before comparing: numbers by value ("$12,000"
+ * = 12000), dates by day, enums, keys, emails and urls by lower case. Free
+ * text votes only on being set; its wording comes from the winning side.
  *
  * Two runs that agree on every decision: run 1 is used as it is. Otherwise,
  * with a third run, each decision goes to the value at least two runs share
  * (absent counts as a value: two runs leaving a page out drop it). A decision
- * with no majority is dropped and reported as uncertain. Patch text comes
- * from the first run on the winning side.
+ * with no majority is dropped and reported as uncertain, with each run's
+ * target and value. Patch text comes from the first run on the winning side.
  */
 
 export type Decisions = ReadonlyMap<string, string>;
 
+/** What the vote needs to know besides the runs: the drawers and the pages shown. */
+export type VoteContext = {
+  readonly schema: EntitySchema;
+  readonly shortlist: readonly Pick<Candidate, "key" | "drawer" | "fields">[];
+};
+
+type FieldValue = string | number;
+type Entry =
+  | { readonly kind: "patch"; readonly drawer: string; readonly item: PlannedUpdate }
+  | { readonly kind: "create"; readonly drawer: string; readonly item: PlannedNewPage };
+type Indexed = {
+  readonly decisions: Map<string, string>;
+  readonly entries: ReadonlyMap<string, Entry>;
+  /** Decision id -> how this run's proposal reads on Indexing. */
+  readonly shown: ReadonlyMap<string, string>;
+};
+
 const ABSENT = "(absent)";
+const SET = "(set)";
 
-const pageId = (drawer: string, key: string) => `page:${drawer}:${key}`;
+const drawerDef = (ctx: VoteContext | undefined, id: string): DrawerDef | undefined =>
+  ctx?.schema.drawers.find((d) => d.id === id);
 
-export function decisionsOf(plan: Pick<Plan, "updates" | "newPages">): Map<string, string> {
-  const out = new Map<string, string>();
+const lower = (v: FieldValue): string => String(v).trim().toLowerCase();
+
+function asNumber(v: FieldValue): number | null {
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[$€£,\s]/g, ""));
+  return Number.isFinite(n) && String(v).trim() !== "" ? n : null;
+}
+
+function asDay(v: FieldValue): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v).trim());
+  if (m) return m[1] ?? null;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
+/** A field value as the vote compares it. */
+export function normaliseField(drawer: DrawerDef | undefined, name: string, value: FieldValue): string {
+  const kind = drawer?.fields.find((f) => f.name === name)?.kind;
+  switch (kind) {
+    case "number": {
+      const n = asNumber(value);
+      return n === null ? JSON.stringify(value) : `n:${n}`;
+    }
+    case "date": {
+      const d = asDay(value);
+      return d === null ? JSON.stringify(value) : `d:${d}`;
+    }
+    case "enum":
+    case "key":
+    case "email":
+    case "url":
+      return JSON.stringify(lower(value));
+    case "text":
+      return SET;
+    default:
+      return JSON.stringify(value);
+  }
+}
+
+function anchorOf(drawer: DrawerDef | undefined, fields: Readonly<Record<string, unknown>>): string | null {
+  const field = drawer?.key_rule.anchor?.field;
+  const v = field ? fields[field] : undefined;
+  return typeof v === "string" && v.trim() !== "" ? `${drawer!.id}@${lower(v)}` : null;
+}
+
+function isOpen(drawer: DrawerDef | undefined, fields: Readonly<Record<string, unknown>>): boolean {
+  const rule = drawer?.key_rule.anchor?.single_open;
+  if (!rule) return false;
+  const v = fields[rule.field];
+  return !(typeof v === "string" && rule.closed.includes(lower(v)));
+}
+
+/** The open shortlist page for an anchor in a single_open drawer, if any. */
+function openPageFor(ctx: VoteContext, drawerId: string, anchor: string) {
+  const def = drawerDef(ctx, drawerId);
+  if (!def?.key_rule.anchor?.single_open) return undefined;
+  return ctx.shortlist.find((p) => p.drawer === drawerId && isOpen(def, p.fields) && anchorOf(def, p.fields) === anchor);
+}
+
+const rewrite = (related: readonly string[], alias: ReadonlyMap<string, string>, self: string): string[] =>
+  [...new Set(related.map((r) => alias.get(r) ?? r))].filter((r) => r !== self);
+
+/**
+ * A new page in a single_open drawer whose anchor already has an open page on
+ * the shortlist becomes an update of that page (its fields and links; the new
+ * page's sections are not carried over), and links to it follow.
+ */
+export function preferOpen(plan: Plan, ctx: VoteContext): Plan {
+  const alias = new Map<string, string>();
+  const converted: PlannedUpdate[] = [];
+  const newPages = plan.newPages.filter((n) => {
+    const def = drawerDef(ctx, n.drawer);
+    const anchor = anchorOf(def, n.fields);
+    const open = anchor ? openPageFor(ctx, n.drawer, anchor) : undefined;
+    if (!open || plan.updates.some((u) => u.key === open.key) || converted.some((u) => u.key === open.key)) return true;
+    const anchorField = def?.key_rule.anchor?.field ?? "";
+    const fields = Object.fromEntries(Object.entries(n.fields).filter(([f]) => f !== anchorField));
+    alias.set(n.key, open.key);
+    converted.push({ key: open.key, patches: [], fields, related: n.related });
+    return false;
+  });
+  if (alias.size === 0) return plan;
+  const fix = <T extends PlannedUpdate | PlannedNewPage>(x: T): T => ({ ...x, related: rewrite(x.related, alias, x.key) });
+  return { ...plan, updates: [...plan.updates, ...converted].map(fix), newPages: newPages.map(fix) };
+}
+
+function index(plan: Pick<Plan, "updates" | "newPages">, ctx?: VoteContext): Indexed {
+  const decisions = new Map<string, string>();
+  const entries = new Map<string, Entry>();
+  const shown = new Map<string, string>();
+  const add = (e: Entry, wanted: string | null) => {
+    const target = wanted && !entries.has(wanted) ? wanted : e.item.key;
+    entries.set(target, e);
+    const pid = `page:${e.drawer}:${target}`;
+    decisions.set(pid, e.kind);
+    shown.set(pid, `${e.kind} ${e.drawer} ${e.item.key}`);
+    const def = drawerDef(ctx, e.drawer);
+    for (const [n, v] of Object.entries(e.item.fields)) {
+      const fid = `field:${target}:${n}`;
+      decisions.set(fid, ctx ? normaliseField(def, n, v) : JSON.stringify(v));
+      shown.set(fid, `${e.item.key} ${n} = ${JSON.stringify(v)}`);
+    }
+  };
   for (const u of plan.updates) {
-    out.set(pageId("?", u.key), "patch");
-    for (const [n, v] of Object.entries(u.fields)) out.set(`field:${u.key}:${n}`, JSON.stringify(v));
+    const page = ctx?.shortlist.find((p) => p.key === u.key);
+    const def = page ? drawerDef(ctx, page.drawer) : undefined;
+    const anchored = page && isOpen(def, page.fields) ? anchorOf(def, page.fields) : null;
+    add({ kind: "patch", drawer: page?.drawer ?? "?", item: u }, anchored);
   }
-  for (const n of plan.newPages) {
-    out.set(pageId(n.drawer, n.key), "create");
-    for (const [f, v] of Object.entries(n.fields)) out.set(`field:${n.key}:${f}`, JSON.stringify(v));
-  }
-  return out;
+  for (const n of plan.newPages) add({ kind: "create", drawer: n.drawer, item: n }, anchorOf(drawerDef(ctx, n.drawer), n.fields));
+  return { decisions, entries, shown };
+}
+
+export function decisionsOf(plan: Pick<Plan, "updates" | "newPages">, ctx?: VoteContext): Map<string, string> {
+  return index(plan, ctx).decisions;
 }
 
 export function agree(a: Decisions, b: Decisions): boolean {
@@ -46,43 +179,59 @@ function winner(values: readonly string[]): string | null {
   return null;
 }
 
+/** The won fields of one target, each value taken from the first run that holds it (the source run first). */
+function wonFields(target: string, src: number, runs: readonly Indexed[], won: ReadonlyMap<string, string>): Record<string, FieldValue> {
+  const order = [src, ...runs.map((_, i) => i).filter((i) => i !== src)];
+  const names = [...new Set(runs.flatMap((r) => Object.keys(r.entries.get(target)?.item.fields ?? {})))];
+  const out: Record<string, FieldValue> = {};
+  for (const n of names) {
+    const fid = `field:${target}:${n}`;
+    const w = won.get(fid);
+    if (w === undefined) continue;
+    const from = order.find((i) => runs[i]!.decisions.get(fid) === w);
+    const v = from === undefined ? undefined : runs[from]!.entries.get(target)?.item.fields[n];
+    if (v !== undefined) out[n] = v;
+  }
+  return out;
+}
+
 /** Merge two or three runs by majority per decision. */
-export function merge(plans: readonly Plan[]): Merged {
-  const ds = plans.map(decisionsOf);
-  const keys = [...new Set(ds.flatMap((d) => [...d.keys()]))].sort();
+export function merge(plans: readonly Plan[], ctx?: VoteContext): Merged {
+  const runs = plans.map((p) => index(ctx ? preferOpen(p, ctx) : p, ctx));
+  const keys = [...new Set(runs.flatMap((r) => [...r.decisions.keys()]))].sort();
   const won = new Map<string, string>();
   const uncertain: Uncertain[] = [];
   for (const k of keys) {
-    const values = ds.map((d) => d.get(k) ?? ABSENT);
-    const w = winner(values);
-    if (w === null) uncertain.push({ decision: k, proposals: values });
+    const w = winner(runs.map((r) => r.decisions.get(k) ?? ABSENT));
+    if (w === null) uncertain.push({ decision: k, proposals: runs.map((r) => r.shown.get(k) ?? ABSENT) });
     else if (w !== ABSENT) won.set(k, w);
   }
-  const fieldsFor = (key: string, base: Record<string, string | number>) =>
-    Object.fromEntries(
-      Object.keys(base)
-        .concat(plans.flatMap((p) => [...p.updates, ...p.newPages].filter((x) => x.key === key).flatMap((x) => Object.keys(x.fields))))
-        .filter((n, i, all) => all.indexOf(n) === i && won.has(`field:${key}:${n}`))
-        .map((n) => [n, JSON.parse(won.get(`field:${key}:${n}`) ?? "null") as string | number]),
-    );
-  const pick = <T extends PlannedUpdate | PlannedNewPage>(id: string, value: string, of: (p: Plan) => readonly T[], key: string): T | null => {
-    const i = ds.findIndex((d) => d.get(id) === value);
-    const src = i >= 0 ? of(plans[i]!).find((x) => x.key === key) : undefined;
-    return src ? { ...src, fields: fieldsFor(key, src.fields) } : null;
-  };
-  const updates: PlannedUpdate[] = [];
-  const newPages: PlannedNewPage[] = [];
+
+  type Picked = { readonly target: string; readonly src: number; readonly entry: Entry };
+  const picked: Picked[] = [];
   for (const [k, v] of won) {
     if (!k.startsWith("page:")) continue;
-    const [, drawer, ...rest] = k.split(":");
-    const key = rest.join(":");
-    if (v === "patch") {
-      const u = pick(k, v, (p) => p.updates, key);
-      if (u) updates.push(u);
-    } else if (drawer) {
-      const n = pick(k, v, (p) => p.newPages, key);
-      if (n) newPages.push(n);
-    }
+    const target = k.split(":").slice(2).join(":");
+    const src = runs.findIndex((r) => r.decisions.get(k) === v);
+    const entry = runs[src]?.entries.get(target);
+    if (entry) picked.push({ target, src, entry });
+  }
+  // Each run's own key for a won target -> the canonical key (from the source run).
+  const aliases = runs.map((r) => new Map(picked.flatMap((p) => {
+    const mine = r.entries.get(p.target)?.item.key;
+    return mine ? [[mine, p.entry.item.key] as const] : [];
+  })));
+  const final = new Set([...picked.map((p) => p.entry.item.key), ...(ctx?.shortlist.map((p) => p.key) ?? [])]);
+  const madeAnywhere = new Set(runs.flatMap((r) => [...r.entries.values()].filter((e) => e.kind === "create").map((e) => e.item.key)));
+  const links = (p: Picked) =>
+    rewrite(p.entry.item.related, aliases[p.src]!, p.entry.item.key).filter((r) => final.has(r) || !madeAnywhere.has(r));
+
+  const updates: PlannedUpdate[] = [];
+  const newPages: PlannedNewPage[] = [];
+  for (const p of picked) {
+    const fields = wonFields(p.target, p.src, runs, won);
+    if (p.entry.kind === "patch") updates.push({ ...p.entry.item, fields, related: links(p) });
+    else if (p.entry.drawer) newPages.push({ ...p.entry.item, fields, related: links(p) });
   }
   return { plan: { updates, newPages, notes: plans[0]?.notes ?? "" }, uncertain };
 }

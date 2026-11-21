@@ -60,6 +60,8 @@ drawers:
     key_rule:
       kind: slug
       text: "project: followed by a short lower-case name, e.g. project:website-rebuild."
+      # Consensus runs compare new project pages by organisation, not by key.
+      anchor: { field: organisation }
     fields:
       - { name: organisation, kind: key }
       - { name: status, kind: enum, values: [proposed, active, paused, done, dropped] }

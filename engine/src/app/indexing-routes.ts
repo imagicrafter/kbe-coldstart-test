@@ -24,6 +24,12 @@ export const WAKE_GAP = "2 minutes (new items wake the curator at most this ofte
 const object = (v: unknown): Row => (v && typeof v === "object" && !Array.isArray(v) ? (v as Row) : {});
 const num = (v: unknown): string => esc(Number(v ?? 0).toLocaleString("en-US"));
 
+/** One cell per run (run 1, run 2, tiebreak): each run's target and value, side by side. */
+function proposalCells(proposals: unknown): string {
+  const list = Array.isArray(proposals) ? proposals.map(String) : [];
+  return [0, 1, 2].map((i) => `<td><code>${esc(list[i] ?? "")}</code></td>`).join("");
+}
+
 function statRow(label: string, value: string, warn = false): string {
   return `<tr${warn ? ' class="warn"' : ""}><th scope="row">${esc(label)}</th><td>${value}</td></tr>`;
 }
@@ -66,10 +72,10 @@ ${cur["has_engine_url"] === true ? postForm("/setup/timer", timerCsrf, hidden("e
     : `<p>Consensus: on · two runs of ${esc(cur["model"] ?? "")}, tiebreak ${esc(cur["tiebreak_model"] ?? "")}</p>`;
   const unsure = Array.isArray(s["uncertain"]) ? (s["uncertain"] as Array<Record<string, unknown>>) : [];
   const unsureRows = unsure
-    .map((u) => `<tr><td>${esc(when(u["created_at"]))}</td><td>${esc(u["item_title"] ?? "(no title)")} <span class="hint">${esc(u["source"])}</span></td><td><code>${esc(u["decision"])}</code></td><td>${esc((Array.isArray(u["proposals"]) ? u["proposals"] : []).map(String).join(" · "))}</td></tr>`)
+    .map((u) => `<tr><td>${esc(when(u["created_at"]))}</td><td>${esc(u["item_title"] ?? "(no title)")} <span class="hint">${esc(u["source"])}</span></td><td><code>${esc(u["decision"])}</code></td>${proposalCells(u["proposals"])}</tr>`)
     .join("");
   const uncertainCard = card(`<h2>Uncertain decisions</h2>${consensus}
-${unsure.length ? `<table><thead><tr><th>When</th><th>Item</th><th>Decision</th><th>Three proposals</th></tr></thead><tbody>${unsureRows}</tbody></table>` : "<p>None. When the three runs all disagree on a decision, it is left out and listed here.</p>"}`);
+${unsure.length ? `<table><thead><tr><th>When</th><th>Item</th><th>Decision</th><th>Run 1</th><th>Run 2</th><th>Tiebreak</th></tr></thead><tbody>${unsureRows}</tbody></table>` : "<p>None. When the three runs all disagree on a decision, it is left out and listed here.</p>"}`);
   const csrf = deps.csrf.token(me.email, "indexing");
   const actions = card(`<h2>Actions</h2>
 ${postForm("/setup/indexing/rerun", csrf, "", "Re-run pending summaries")}

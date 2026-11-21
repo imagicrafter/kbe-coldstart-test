@@ -22,6 +22,9 @@ drawers:
       kind: slug                 # email | domain | slug | source_id
       text: "deal: followed by the organisation domain and a short name."
       # sources: [fireflies]     # source_id only: sources whose items carry this key
+      anchor:                    # slug only, optional: what a page belongs to
+        field: organisation      # consensus compares pages by this field, not by the slug
+        single_open: { field: stage, closed: [won, lost] }   # one open page per anchor: update it, never duplicate
     fields:
       - { name: stage, kind: enum, values: [lead, won, lost] }   # text|date|number|enum|key|email|url
       - { name: value, kind: number }
@@ -52,6 +55,13 @@ drawers:
 | `domain` | the organisation's web domain, without `www.` |
 | `slug` | `<prefix>:<short-name>`; the prefix is read from the start of `text` |
 | `source_id` | `<prefix>:<the item's id at its source>`, for items from `key_rule.sources` (or with `metadata.<prefix>_id`) |
+
+A slug is a free name, so two curator runs rarely name the same deal the
+same way. `key_rule.anchor` names the field that says what the page belongs
+to (a deal's `organisation`). Consensus runs then compare these pages by
+drawer and anchor value, and the key comes from the winning run. With
+`single_open`, a new page whose organisation already has an open page on the
+shortlist (stage not in `closed`) becomes an update of that page.
 
 ## What the curator does with it
 
