@@ -1,5 +1,12 @@
 # Topics from source tags
 
+> **Changed by migration 0063.** Gmail and Fireflies now use inclusion rules
+> ([source-rules.md](source-rules.md)): labels and channels found at ingest
+> are the rule builder's picker, per account, and no longer switch topics on.
+> Topics are made by administrators only, so no tag can be switched on any
+> more. Drive (and Calendar) keep the behaviour below for tags already
+> switched on. The provider interface at the end still applies.
+
 In Quantabase a topic is never typed in. It is made from a tag that already
 exists in one of your sources:
 

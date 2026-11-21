@@ -46,7 +46,7 @@ declare
     v jsonb;
 begin
     v_item := (workspace.source_item_record('sub-cc-ann', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'cc-1', 'title', 'Pilot pricing', 'body', 'x'))->>'id')::uuid;
+        'source', 'drive', 'source_id', 'cc-1', 'title', 'Pilot pricing', 'body', 'x'))->>'id')::uuid;
     perform workspace.curator_uncertain_record(v_item, 'field:deal:x:stage', array['"lead"', '"proposal"', '"won"']);
     assert pg_temp.raises(format($q$select workspace.curator_uncertain_record(%L, 'd', array['a'])$q$,
                                  gen_random_uuid()), '22023');

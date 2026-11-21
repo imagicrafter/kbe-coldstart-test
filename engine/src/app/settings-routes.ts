@@ -11,14 +11,16 @@ import { AppMissingFunctionError, type Row } from "./store.js";
 import { roleLabel, setChrome } from "./chrome.js";
 import { adminMigrationState, updateBanner, type DatabaseDeps } from "./db-update.js";
 import { sessionSentence } from "../setup/inputs.js";
-import { setSourceTag, sourceTagsCard } from "./source-tags.js";
 
 /**
  * The setup screens that come after sign-in, for administrators only (the
  * admin application with its second factor guards /setup/*):
  *
  *   /setup/people    topics and people (adds, grants and removals go through
- *                    the admin functions' preview-then-confirm, 0033)
+ *                    the admin functions' preview-then-confirm, 0033; topics
+ *                    are made here by administrators only, 0063). Each
+ *                    person's source rules are theirs (/app/sources): this
+ *                    screen shows only how many each person has.
  *   /setup/template  which business templates this Engine uses
  *   /setup/model     the curator's model key, straight into Supabase Vault
  *   /setup/timer     the curator timer (Supabase cron), and a test poke
@@ -89,28 +91,34 @@ const yes = (v: unknown) => (v === true ? "yes" : "no");
 const ROLES = ["reader", "reviewer", "administrator"] as const;
 
 const people: Handler = async (c, me, deps) => {
-  const [topics, persons, tags] = await Promise.all([
+  const [topics, persons, counts] = await Promise.all([
     deps.store.topics(me.email),
     deps.store.people(me.email),
-    deps.store.sourceTags(me.email),
+    deps.store.peopleRuleCounts(me.email).catch(() => [] as Row[]),
   ]);
   const csrf = deps.csrf.token(me.email, "people");
+  const rulesOf = new Map(counts.map((r) => [String(r["email"] ?? "").toLowerCase(), Number(r["rules"] ?? 0)]));
   const topicRows = topics
     .map((t) => `<tr><td>${esc(t["topic"])}</td><td>${esc(t["label"])}</td><td>${t["sensitive"] ? "sensitive" : ""}</td><td>${esc(t["people"])}</td></tr>`)
     .join("");
   const personRows = persons
-    .map((p) => `<tr><td>${esc(p["display_name"])}</td><td>${esc(p["email"] ?? "")}</td><td>${esc(p["role"])}</td><td>${p["active"] ? "" : "inactive"}</td><td>${esc(list(p["topics"]).join(", "))}</td></tr>`)
+    .map((p) => `<tr><td>${esc(p["display_name"])}</td><td>${esc(p["email"] ?? "")}</td><td>${esc(p["role"])}</td><td>${p["active"] ? "" : "inactive"}</td><td>${esc(list(p["topics"]).join(", "))}</td><td>${esc(rulesOf.get(String(p["email"] ?? "").toLowerCase()) ?? 0)}</td></tr>`)
     .join("");
   const body =
     card(`<h2>Topics</h2><table><thead><tr><th>Topic</th><th>Label</th><th></th><th>People</th></tr></thead><tbody>${topicRows}</tbody></table>
-<p class="hint">A topic is made from a tag in your sources, below. There is no way to type one in.</p>`) +
-    sourceTagsCard(tags, csrf) +
-    card(`<h2>People</h2><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th><th>Topics</th></tr></thead><tbody>${personRows}</tbody></table>`) +
+<p class="hint">Only administrators make topics. People file their own sources under the topics they hold, with their own rules on <a href="/app/sources">Sources</a>.</p>`) +
+    card(`<h2>Make a topic</h2>${postForm("/setup/people/topic", csrf, `<label for="ntopic">Topic id</label><input type="text" id="ntopic" name="topic" required maxlength="40" pattern="[a-z][a-z0-9-]{0,39}">
+<label for="nlabel">Label</label><input type="text" id="nlabel" name="label" required maxlength="80">
+<label><input type="checkbox" name="sensitive" value="yes"> Sensitive (giving it needs an extra yes)</label>`, "Preview")}<p class="hint">A new topic is held by nobody until you give it to someone below.</p>`) +
+    card(`<h2>People</h2><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th><th>Topics</th><th>Source rules</th></tr></thead><tbody>${personRows}</tbody></table>
+<p class="hint">Source rules: how many rules each person has written for their own sources. Their contents are theirs alone.</p>`) +
     card(`<h2>Add a person</h2>${postForm("/setup/people/change", csrf, `${hidden("action", "add")}
 <label for="email">Email</label><input type="email" id="email" name="email" required maxlength="254">
 <label for="display_name">Name</label><input type="text" id="display_name" name="display_name" required maxlength="120">
 <label for="role">Role</label><select id="role" name="role">${ROLES.map((r) => `<option value="${r}">${r}</option>`).join("")}</select>
 <label><input type="checkbox" name="admin_ack" value="yes"> I mean to add an administrator</label>`, "Preview")}`) +
+    card(`<h2>Remove a person</h2>${postForm("/setup/people/change", csrf, `${hidden("action", "deactivate")}
+<label for="remove_email">Person's email</label><input type="email" id="remove_email" name="email" required maxlength="254">`, "Preview")}<p class="hint">They lose access at once; their own pages, items and rules are kept and come back if they are added again.</p>`) +
     card(`<h2>Give or take a topic</h2>${postForm("/setup/people/change", csrf, `<label for="action">Change</label><select id="action" name="action"><option value="grant">Give the topic</option><option value="revoke">Take the topic away</option></select>
 <label for="person_email">Person's email</label><input type="email" id="person_email" name="email" required maxlength="254">
 <label for="gtopic">Topic</label><input type="text" id="gtopic" name="topic" required maxlength="40">
@@ -118,8 +126,29 @@ const people: Handler = async (c, me, deps) => {
   return page(c, "/setup/people", "Topics and people", body);
 };
 
-const sourceTag: Handler = (c, me, deps) =>
-  setSourceTag(c, me, deps, (body, status = 200) => page(c, "/setup/people", "Topics and people", body, status));
+const TOPIC = /^[a-z][a-z0-9-]{0,39}$/;
+
+/** Make a topic: preview, then an explicit yes. Administrators only (also checked in the database). */
+const addTopic: Handler = async (c, me, deps) => {
+  const sent = await readForm(c, deps, "setup", me.email, "people");
+  if (!sent.ok) return sent.response;
+  const topic = (sent.form["topic"] ?? "").trim().toLowerCase();
+  const label = (sent.form["label"] ?? "").trim();
+  const sensitive = sent.form["sensitive"] === "yes";
+  if (!TOPIC.test(topic) || topic === "unclassified") {
+    return page(c, "/setup/people", "Not accepted", notice("error", "A topic id is 1 to 40 lower-case letters, digits or dashes, starting with a letter."), 400);
+  }
+  if (label.length < 1 || label.length > 80) return page(c, "/setup/people", "Not accepted", notice("error", "A label is 1 to 80 characters."), 400);
+  if (sent.form["confirm"] !== "yes") {
+    const body = card(`<h2>Make this topic?</h2><p><strong>${esc(topic)}</strong> (${esc(label)})${sensitive ? ", sensitive" : ""}. Nobody holds it until you give it to someone.</p>
+${postForm("/setup/people/topic", deps.csrf.token(me.email, "people"), `${hidden("topic", topic)}${hidden("label", label)}${sensitive ? hidden("sensitive", "yes") : ""}${hidden("confirm", "yes")}`, "Yes, make it")}
+<p><a href="/setup/people">No, go back</a></p>`);
+    return page(c, "/setup/people", "Confirm", body);
+  }
+  const made = await deps.store.addTopic(me.email, topic, label, sensitive);
+  logger.info({ topic, made }, "app: topic made");
+  return sendMessage(c, "setup", 200, made ? "Topic made" : "Already there", made ? `The topic ${topic} exists now. Give it to people below.` : `There is already a topic ${topic}; it was not changed.`);
+};
 
 type Change = { readonly fn: string; readonly args: Readonly<Record<string, string | boolean>> };
 
@@ -134,6 +163,7 @@ function changeFrom(form: Readonly<Record<string, string>>): Change | string {
     if (!(ROLES as readonly string[]).includes(role)) return "Choose a role.";
     return { fn: "admin_person_add", args: { p_new_email: email, p_display_name: name, p_role: role, p_admin_ack: form["admin_ack"] === "yes" } };
   }
+  if (action === "deactivate") return { fn: "admin_person_deactivate", args: { p_person_email: email } };
   const topic = (form["topic"] ?? "").trim().toLowerCase();
   if (!/^[a-z][a-z0-9-]{0,39}$/.test(topic)) return "That is not a topic name.";
   if (action === "grant") return { fn: "admin_grant", args: { p_person_email: email, p_topic: topic, p_sensitive_ack: form["sensitive_ack"] === "yes" } };
@@ -326,7 +356,7 @@ const health: Handler = async (c, me, deps) => {
 export function makeSettingsRoutes(use: () => SettingsDeps): Hono {
   const app = new Hono();
   app.get("/people", admin(use, people));
-  app.post("/people/source-tag", admin(use, sourceTag));
+  app.post("/people/topic", admin(use, addTopic));
   app.post("/people/change", admin(use, change));
   app.get("/template", admin(use, template));
   app.post("/template", admin(use, saveTemplate));

@@ -222,8 +222,9 @@ For everyone:
 | `related` | `key`; optional `limit` (default 10) | Pages one link away (out-links and backlinks) with the reason |
 | `save_page` | `drawer`, `key`, `title`; optional header fields, `body`, `expected_hash` | Creates or replaces one of your own pages. Replacing needs `expected_hash` |
 | `update_page` | `key`, `patches`; optional header changes | Small edits to your own page: `append-bullet`, `append-paragraph`, `replace-line`, `new-section-after` |
-| `record_source_item` | `source`, `source_id`, `body`; optional `title`, `topics`, `cursor`, `metadata` | Stores one raw item as yours, untrusted, versioned by id and text hash |
-| `get_ingest_plan` | `source` (`gmail`, `drive`, `fireflies`, `calendar`) | Read-only. Your cursor for that source, `since`, `max_items`, and how to fill `record_source_item`. Used by the plugin's `kb-ingest` skill ([plugin.md](plugin.md)) |
+| `record_source_item` | `source`, `source_id`, `body`; for Gmail and Fireflies `account` and `provider`; optional `title`, `cursor`, `metadata`, `tags` (Drive) | Stores one raw item as yours, untrusted, versioned by id and text hash, if your inclusion rules for that account include it ([source-rules.md](source-rules.md)); the Engine sets the topic. `topics` and `owner` are ignored. Otherwise `not_included` and nothing is stored |
+| `get_ingest_plan` | `source` (`gmail`, `drive`, `fireflies`, `calendar`); `account` for Gmail and Fireflies | Your cursor for that source account, `since`, `max_items`, and how to fill `record_source_item`; for Gmail and Fireflies your rules and a query narrowed by them. Stores no source text. Used by the plugin's `kb-ingest` skill ([plugin.md](plugin.md)) |
+| `report_ingest_candidates` | `source`, `account`; optional `labels`/`channels` (+ `_complete`), `candidates` | Reports an account's labels or channels (the rule builder's picker; a label missing from a complete list makes its rules broken) and a metadata-only sample for the dry-run. No subject or text |
 | `get_source_item` | `id` | One of your own raw items; its text only inside `content.untrusted_source_text` |
 
 Pages are owned by one person each. Writes only ever change the caller's own

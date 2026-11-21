@@ -605,7 +605,7 @@ The curator changes pages, so it is held more tightly than the summariser
 |---|---|
 | Items that look written to steer an AI never reach the model; they wait for their owner to release them, and everything from a released item waits for a yes | `curator/guard.ts` `screen`, `curator_claim` |
 | The item's text is neutralised and delimited the same way as above (a port of `prompt_guard.py`) | `curator/guard.ts` |
-| It writes only the item owner's pages, only within the item's topics; a new page gets the item's topics. No owner or topic comes from the model | `curator_candidates`, `curator_page_save` (database) |
+| It writes only the item owner's pages, only pages with exactly the item's topic (one topic per page, 0063); a new page gets the item's topic. Facts from an item in another topic go to a separate page. No owner or topic comes from the model | `curator_candidates`, `curator_page_save` (database) |
 | It can change page text, fields and new pages only. Nothing it returns can touch people, grants, topics, sharing or settings | the reply contract, `curator/output.ts` |
 | A reply outside the contract is refused whole: unknown page or field, a value the drawer does not allow, a patch that does not apply, text copied from another page, a link (`related`) to a page that is neither on the shortlist nor made in the same reply | `curator/output.ts` |
 | Large changes (stage, value, new deal, large text) wait in `curator_reviews` for the owner's yes; only the owner can decide, and only on the app screen `/app/reviews` (no MCP tool can approve) | `curator/policy.ts`, `app_review_decide` (0054) |
@@ -670,6 +670,27 @@ person. Every function behind them (0054) takes the verified email and acts on
 that person's own rows only: their review queue, their flagged items, their
 pages and history. Page edits and restores go through the same write core as
 `save_page`, with the content-hash check.
+
+**Sources and inclusion rules** (`/app/sources`, migration 0063). What
+Gmail and Fireflies ingest keeps is decided by each person's own rules,
+enforced in the database, never by the ingest run
+([source-rules.md](source-rules.md)):
+
+| Rule | Where it holds |
+|---|---|
+| Default-deny: an item no include rule matches is counted and never stored; an exclude rule always wins; the first include match decides | `source_item_record`, `_source_rules_eval` |
+| The topic comes from the rule; any `topics` or `owner` the run passes is ignored; the owner is the signed-in subject | `source_item_record`; also dropped in `tools/pages/source.ts` |
+| A rule maps only to a topic its author holds (or private); a rule whose topic was taken away, or whose label or channel is gone, matches nothing | `_source_rules_normalize`, `_src_rule_broken` |
+| Each person reads and changes only their own accounts and rules, administrators included; an administrator sees a count of rules per person and nothing else | `_src_own_account`, `app_people_rule_counts` |
+| Rule lists are append-only versions; every change is audited; each kept item stamps its rule and version | `source_rule_sets` (trigger), `source_rule_audit` |
+| Narrowing re-files kept items owner-only at once and flags their pages | `_src_refile` |
+| The dry-run sample is metadata only (addresses, label or channel ids, participants, date); a subject or text is refused at the tool | `report_ingest_candidates` schema, `_src_meta` |
+| Topics are made by administrators only | `app_topic_add` (admin check); `app_source_tag_set` is no longer callable by the service |
+
+What is left: the provider query is built from the rules to list less, but
+the run could list more; that is harmless (the database drops it) but the
+run's model still reads those items. Addresses are matched as the provider
+reports them; a forged From header matches like a real one.
 
 **Forms.** Every post must come from the same site (Sec-Fetch-Site or
 Origin), be a plain form post, and carry a token that is an HMAC of the

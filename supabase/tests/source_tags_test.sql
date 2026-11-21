@@ -52,13 +52,15 @@ begin
     assert not has_function_privilege('anon', 'workspace.app_source_tags_list(text)', 'execute'), 'anon list';
     assert not has_function_privilege('authenticated', 'workspace.app_source_tags_list(text)', 'execute'), 'authenticated list';
     assert not has_function_privilege('kb_ingest', 'workspace.app_source_tags_list(text)', 'execute'), 'kb_ingest list';
-    assert has_function_privilege('kb_engine', 'workspace.app_source_tag_set(text, uuid, boolean, boolean)', 'execute'), 'kb_engine set';
+    -- 0063: topics are made by administrators only; the switch is no longer the service's.
+    assert not has_function_privilege('kb_engine', 'workspace.app_source_tag_set(text, uuid, boolean, boolean)', 'execute'), 'kb_engine set';
     assert not has_function_privilege('anon', 'workspace.app_source_tag_set(text, uuid, boolean, boolean)', 'execute'), 'anon set';
     assert not has_function_privilege('authenticated', 'workspace.app_source_tag_set(text, uuid, boolean, boolean)', 'execute'), 'authenticated set';
     assert not has_function_privilege('kb_ingest', 'workspace.app_source_tag_set(text, uuid, boolean, boolean)', 'execute'), 'kb_ingest set';
     assert not has_function_privilege('kb_engine', 'workspace._source_tags_note(uuid, text, jsonb)', 'execute'), 'helper hidden';
     assert not has_function_privilege('kb_engine', 'workspace._topic_slug(text, text)', 'execute'), 'slug hidden';
-    assert not has_function_privilege('kb_engine', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'free-text topic add gone';
+    -- 0063: the administrators' topic add is the service's again (it checks the caller is an administrator).
+    assert has_function_privilege('kb_engine', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'admin topic add';
     assert has_function_privilege('kb_engine', 'workspace.source_item_record(text, jsonb)', 'execute'), 'kb_engine record';
 end $$;
 
@@ -80,31 +82,33 @@ declare
     r jsonb;
     v_item record;
 begin
+    -- 0063: a claimed topic is ignored (never used), not refused.
+    r := workspace.source_item_record('sub-st-ann', '{"source":"drive","source_id":"m0","body":"x","topics":["st-shared"]}'::jsonb);
+    select * into v_item from workspace.source_item_get('sub-st-ann', (r->>'id')::uuid);
+    assert v_item.topics = '{}'::text[], 'claimed topic ignored';
     assert pg_temp.raises($q$select workspace.source_item_record('sub-st-ann',
-        '{"source":"gmail","source_id":"m0","body":"x","topics":["st-shared"]}'::jsonb)$q$, '22023');
+        '{"source":"drive","source_id":"m0","body":"x","tags":"Label_1"}'::jsonb)$q$, '22023');
     assert pg_temp.raises($q$select workspace.source_item_record('sub-st-ann',
-        '{"source":"gmail","source_id":"m0","body":"x","tags":"Label_1"}'::jsonb)$q$, '22023');
-    assert pg_temp.raises($q$select workspace.source_item_record('sub-st-ann',
-        '{"source":"gmail","source_id":"m0","body":"x","tags":[{"id":"","name":"A","kind":"label"}]}'::jsonb)$q$, '22023');
+        '{"source":"drive","source_id":"m0","body":"x","tags":[{"id":"","name":"A","kind":"folder"}]}'::jsonb)$q$, '22023');
 
     r := workspace.source_item_record('sub-st-ann', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'm1', 'body', 'hello',
+        'source', 'drive', 'source_id', 'm1', 'body', 'hello',
         'tags', jsonb_build_array(
-            jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme', 'kind', 'label'),
-            jsonb_build_object('id', 'Label_2', 'name', 'St Shared', 'kind', 'label'))));
+            jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme', 'kind', 'folder'),
+            jsonb_build_object('id', 'Label_2', 'name', 'St Shared', 'kind', 'folder'))));
     select * into v_item from workspace.source_item_get('sub-st-ann', (r->>'id')::uuid);
     assert v_item.topics = '{}'::text[], 'a tag nobody switched on gives no topic';
     assert v_item.metadata->'source_tags' = '["Label_1", "Label_2"]'::jsonb, v_item.metadata::text;
 
     -- Seen again: counted, not duplicated; a rename updates the name.
     perform workspace.source_item_record('sub-st-ann', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'm2', 'body', 'again',
-        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'label'))));
+        'source', 'drive', 'source_id', 'm2', 'body', 'again',
+        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'folder'))));
 
     -- Eve's own label with the same id is hers, not Ann's.
     perform workspace.source_item_record('sub-st-eve', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'e1', 'body', 'eve',
-        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Eve stuff', 'kind', 'label'))));
+        'source', 'drive', 'source_id', 'e1', 'body', 'eve',
+        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Eve stuff', 'kind', 'folder'))));
 end $$;
 reset role;
 
@@ -119,7 +123,8 @@ begin
 end $$;
 
 -- 4. Listing and switching: own tags only, preview first ----------------------
-set local role kb_engine;
+-- (0063: no longer callable by the service; checked as the function owner so
+-- the tags already switched on keep working for Drive.)
 do $$
 declare
     v_list  jsonb;
@@ -173,35 +178,51 @@ declare
     v_acme uuid;
 begin
     r := workspace.source_item_record('sub-st-ann', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'm3', 'body', 'new acme mail',
+        'source', 'drive', 'source_id', 'm3', 'body', 'new acme mail',
         'tags', jsonb_build_array(
-            jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'label'),
-            jsonb_build_object('id', 'Label_9', 'name', 'Other', 'kind', 'label'))));
+            jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'folder'),
+            jsonb_build_object('id', 'Label_9', 'name', 'Other', 'kind', 'folder'))));
     select * into v_item from workspace.source_item_get('sub-st-ann', (r->>'id')::uuid);
     assert v_item.topics = array['clients-acme-inc'], v_item.topics::text;
 
     -- Same tag id from another source is a different tag.
     r := workspace.source_item_record('sub-st-ann', jsonb_build_object(
-        'source', 'drive', 'source_id', 'f1', 'body', 'file',
-        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'folder'))));
+        'source', 'calendar', 'source_id', 'f1', 'body', 'file',
+        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'event_tag'))));
     select * into v_item from workspace.source_item_get('sub-st-ann', (r->>'id')::uuid);
     assert v_item.topics = '{}'::text[], 'other source, other tag';
 
     -- Eve's label with the same id stamps nothing for Eve.
     r := workspace.source_item_record('sub-st-eve', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'e2', 'body', 'eve 2',
-        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Eve stuff', 'kind', 'label'))));
+        'source', 'drive', 'source_id', 'e2', 'body', 'eve 2',
+        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Eve stuff', 'kind', 'folder'))));
     select * into v_item from workspace.source_item_get('sub-st-eve', (r->>'id')::uuid);
     assert v_item.topics = '{}'::text[], 'Eve''s tag is off';
 
+end $$;
+reset role;
+
+do $$
+declare
+    r jsonb;
+    v_acme uuid;
+begin
     -- Switched off: new items no longer get the topic.
     select (e->>'id')::uuid into v_acme
     from jsonb_array_elements(workspace.app_source_tags_list('st-ann@example.com')) e where e->>'tag_id' = 'Label_1';
     r := workspace.app_source_tag_set('st-ann@example.com', v_acme, false, true);
     assert r->>'status' = 'off', r::text;
+end $$;
+
+set local role kb_engine;
+do $$
+declare
+    r jsonb;
+    v_item record;
+begin
     r := workspace.source_item_record('sub-st-ann', jsonb_build_object(
-        'source', 'gmail', 'source_id', 'm4', 'body', 'later acme mail',
-        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'label'))));
+        'source', 'drive', 'source_id', 'm4', 'body', 'later acme mail',
+        'tags', jsonb_build_array(jsonb_build_object('id', 'Label_1', 'name', 'Clients/Acme Inc', 'kind', 'folder'))));
     select * into v_item from workspace.source_item_get('sub-st-ann', (r->>'id')::uuid);
     assert v_item.topics = '{}'::text[], 'off means no topic';
 end $$;

@@ -2,6 +2,7 @@ import { McpAppError } from "../../mcp/errors.js";
 import type { ToolSpec } from "../../mcp/tool-helpers.js";
 import { untrustedText } from "../../entities/untrusted.js";
 import { sourceTags } from "../../sources/index.js";
+import { without } from "../../sources/rules.js";
 import { pageRpc, rowsOf } from "./rpc.js";
 import { getSourceItemSchema, recordSourceItemSchema } from "./schemas.js";
 
@@ -15,14 +16,20 @@ import { getSourceItemSchema, recordSourceItemSchema } from "./schemas.js";
 export const recordSourceItemTool: ToolSpec = {
   name: "record_source_item",
   description:
-    "Hand one new source item (a mail thread, meeting or file) to the Engine unchanged. It is stored as yours, as untrusted source data; the same source_id with the same text is skipped, changed text becomes a new version. Pass the item's labels, folders or channels in tags, unchanged (get_ingest_plan says how); never pass topics: the Engine files an item under a topic only when you switched that tag on. Pass cursor (the source's own 'last seen' marker) so a missed run can catch up. Returns id, version and status (new, new_version, unchanged).",
+    "Hand one new source item (a mail message, meeting or file) to the Engine unchanged. For gmail and fireflies pass account (the account's address) and provider (the item's metadata, as get_ingest_plan says): the Engine checks the item against YOUR inclusion rules for that account, files it under the rule's topic itself, and keeps nothing no rule includes (status not_included, nothing stored). For Drive pass the item's folders in tags. Never pass topics or an owner: they are ignored. The same source_id with the same text is skipped; changed text becomes a new version. Pass cursor (the source's own 'last seen' marker) so a missed run can catch up. Returns id, version and status (new, new_version, unchanged, not_included).",
   shape: recordSourceItemSchema.shape,
   run: async (params, ctx) => {
-    const parsed = recordSourceItemSchema.parse(params);
+    // The topic and owner are the Engine's to decide: whatever the run claims is dropped here
+    // and ignored again in the database.
+    const parsed = without(recordSourceItemSchema.parse(params), ["topics", "owner"]);
     const item = { ...parsed, tags: sourceTags(parsed.source, parsed.tags ?? []) };
     const data = await pageRpc("source_item_record", ctx.sub, { p_item: item }, "The item could not be recorded");
     const out = (data ?? {}) as Record<string, unknown>;
-    return { id: String(out["id"]), version: Number(out["version"]), status: String(out["status"]) };
+    const status = String(out["status"]);
+    if (status === "not_included") {
+      return { id: null, version: null, status, reason: String(out["reason"] ?? "no_rule") };
+    }
+    return { id: String(out["id"]), version: Number(out["version"]), status };
   },
 };
 

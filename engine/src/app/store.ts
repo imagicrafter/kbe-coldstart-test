@@ -68,11 +68,24 @@ export type AppStore = {
   readonly templates: () => Promise<string[]>;
   readonly setTemplates: (email: string, names: readonly string[]) => Promise<string[]>;
   readonly topics: (email: string) => Promise<Row[]>;
-  /** The caller's own source tags (0060): labels, folders, channels found at ingest. */
-  readonly sourceTags: (email: string) => Promise<Row[]>;
-  /** Switch one of the caller's tags; confirm false only previews. */
-  readonly setSourceTag: (email: string, id: string, enabled: boolean, confirm: boolean) => Promise<Row>;
+  /** Make a topic (administrators only, checked in the database). True when new. */
+  readonly addTopic: (email: string, topic: string, label: string, sensitive: boolean) => Promise<boolean>;
+  /** For administrators: how many rules each person has. Never the rules. */
+  readonly peopleRuleCounts: (email: string) => Promise<Row[]>;
   readonly people: (email: string) => Promise<Row[]>;
+  // Sources (0063): every person's OWN source accounts and inclusion rules.
+  readonly sourceAccounts: (email: string) => Promise<Row[]>;
+  readonly addSourceAccount: (email: string, source: string, account: string) => Promise<Row>;
+  readonly sourceRules: (email: string, accountId: string) => Promise<Row>;
+  /** Save the whole ordered list; a stale expectedVersion is refused. */
+  readonly saveSourceRules: (email: string, accountId: string, rules: readonly unknown[], expectedVersion: number) => Promise<Row>;
+  readonly previewSourceRules: (email: string, accountId: string, rules: readonly unknown[]) => Promise<Row>;
+  readonly sourceRulesHistory: (email: string, accountId: string) => Promise<Row>;
+  readonly recheckSource: (email: string, accountId: string) => Promise<Row>;
+  readonly backfillSource: (email: string, accountId: string, since: string) => Promise<Row>;
+  readonly requestSample: (email: string, accountId: string) => Promise<boolean>;
+  readonly recheckPages: (email: string) => Promise<Row[]>;
+  readonly pageRecheckDone: (email: string, id: string) => Promise<boolean>;
   /** An admin change in two steps (0033): no code previews, a code applies. */
   readonly twoStep: (email: string, spec: TwoStepSpec) => Promise<TwoStepResult>;
   readonly setModelKey: (email: string, value: string) => Promise<void>;
@@ -94,6 +107,7 @@ async function rpc(fn: string, args: Readonly<Record<string, unknown>>): Promise
     logger.warn({ fn, code: error.code }, "app RPC failed");
     if (error.code === "22023") throw new AppInputError(error.message.slice(0, 300));
     if (error.code === "42501") throw new AppDeniedError("not allowed");
+    if (error.code === "40001") throw new AppInputError(error.message.slice(0, 300));
     if (error.code === MISSING_FUNCTION) throw new AppMissingFunctionError(fn);
     throw new AppStoreError("database error");
   }
@@ -160,9 +174,26 @@ export const liveStore: AppStore = {
     return Array.isArray(data) ? data.map(String) : [];
   },
   topics: async (email) => list(await rpc("app_topics_list", { p_email: email })),
-  sourceTags: async (email) => list(await rpc("app_source_tags_list", { p_email: email })),
-  setSourceTag: async (email, id, enabled, confirm) =>
-    obj(await rpc("app_source_tag_set", { p_email: email, p_id: id, p_enabled: enabled, p_confirm: confirm })) ?? {},
+  addTopic: async (email, topic, label, sensitive) =>
+    (await rpc("app_topic_add", { p_email: email, p_topic: topic, p_label: label, p_sensitive: sensitive })) === true,
+  peopleRuleCounts: async (email) => list(await rpc("app_people_rule_counts", { p_email: email })),
+  sourceAccounts: async (email) => list(await rpc("app_source_accounts_list", { p_email: email })),
+  addSourceAccount: async (email, source, account) =>
+    obj(await rpc("app_source_account_add", { p_email: email, p_source: source, p_account: account })) ?? {},
+  sourceRules: async (email, id) => obj(await rpc("app_source_rules_get", { p_email: email, p_account_id: id })) ?? {},
+  saveSourceRules: async (email, id, rules, expected) =>
+    obj(await rpc("app_source_rules_save", { p_email: email, p_account_id: id, p_rules: rules, p_expected_version: expected })) ?? {},
+  previewSourceRules: async (email, id, rules) =>
+    obj(await rpc("app_source_rules_preview", { p_email: email, p_account_id: id, p_rules: rules })) ?? {},
+  sourceRulesHistory: async (email, id) =>
+    obj(await rpc("app_source_rules_history", { p_email: email, p_account_id: id })) ?? {},
+  recheckSource: async (email, id) => obj(await rpc("app_source_recheck", { p_email: email, p_account_id: id })) ?? {},
+  backfillSource: async (email, id, since) =>
+    obj(await rpc("app_source_backfill", { p_email: email, p_account_id: id, p_since: since })) ?? {},
+  requestSample: async (email, id) =>
+    (await rpc("app_source_sample_request", { p_email: email, p_account_id: id })) === true,
+  recheckPages: async (email) => list(await rpc("app_pages_recheck_list", { p_email: email })),
+  pageRecheckDone: async (email, id) => (await rpc("app_page_recheck_done", { p_email: email, p_id: id })) === true,
   people: async (email) => list(await rpc("admin_people_list", { p_email: email })),
   twoStep: (email, spec) => runTwoStep(spec, email),
   setModelKey: async (email, value) => {

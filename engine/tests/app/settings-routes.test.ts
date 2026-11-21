@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { makeSettingsRoutes } from "../../src/app/settings-routes.js";
 import { _captureLogsForTests } from "../../src/log/logger.js";
-import { ASSERT, OWNER, TAG_OFF, TAG_ON, client, createScreens, csrfIn } from "./fakes.js";
+import { ASSERT, OWNER, READER, client, createScreens, csrfIn } from "./fakes.js";
 
 function world() {
   const screens = createScreens();
@@ -102,55 +102,55 @@ describe("the template", () => {
 });
 
 describe("topics and people", () => {
-  it("has no free-text topic box and no route to add a topic by name", async () => {
+  it("administrators make a topic: preview first, then only with a yes", async () => {
     const w = world();
     const html = await (await w.http.get("/setup/people", ASSERT.owner)).text();
-    expect(html).not.toMatch(/New topic/);
-    expect(html).not.toContain('action="/setup/people/topic"');
-    const res = await w.http.post("/setup/people/topic", { csrf: csrfIn(html), topic: "deals", label: "Deals" }, ASSERT.owner);
-    expect(res.status).toBe(404);
-  });
-
-  it("lists the tags found in the owner's sources, each with a switch", async () => {
-    const w = world();
-    const html = await (await w.http.get("/setup/people", ASSERT.owner)).text();
-    expect(html).toContain("Found in your sources");
-    expect(shown(html)).toContain("Clients/Acme");
-    expect(shown(html)).toContain("Gmail label");
-    expect(html).toContain(`name="tag" value="${TAG_OFF}"`);
-    expect(html).toContain("Turn into a topic");
-    expect(html).toContain("Turn off");
-  });
-
-  it("turning a tag on previews first, then switches it only with a yes", async () => {
-    const w = world();
-    const csrf = csrfIn(await (await w.http.get("/setup/people", ASSERT.owner)).text());
-    const preview = await w.http.post("/setup/people/source-tag", { csrf, tag: TAG_OFF, enabled: "yes" }, ASSERT.owner);
+    expect(html).toContain('action="/setup/people/topic"');
+    expect(html).not.toContain("Found in your sources");
+    const preview = await w.http.post("/setup/people/topic", { csrf: csrfIn(html), topic: "deals", label: "Deals" }, ASSERT.owner);
     expect(preview.status).toBe(200);
-    const html = await preview.text();
-    expect(shown(html)).toContain("clients-acme");
-    expect(html).toContain('name="confirm" value="yes"');
-    expect(w.fake.calls.filter((c) => c.fn === "setSourceTag").map((c) => c.args[3])).toEqual([false]);
-
-    const done = await w.http.post("/setup/people/source-tag", { csrf: csrfIn(html), tag: TAG_OFF, enabled: "yes", confirm: "yes" }, ASSERT.owner);
+    const confirm = await preview.text();
+    expect(confirm).toContain('name="confirm" value="yes"');
+    expect(w.fake.calls.filter((c) => c.fn === "addTopic")).toHaveLength(0);
+    const done = await w.http.post("/setup/people/topic", { csrf: csrfIn(confirm), topic: "deals", label: "Deals", confirm: "yes" }, ASSERT.owner);
     expect(done.status).toBe(200);
-    expect(w.fake.calls.filter((c) => c.fn === "setSourceTag").map((c) => c.args[3])).toEqual([false, true]);
+    expect(w.fake.state.topicsMade).toEqual(["deals"]);
   });
 
-  it("turning a tag off needs no preview", async () => {
+  it("refuses a topic id that is not one", async () => {
     const w = world();
     const csrf = csrfIn(await (await w.http.get("/setup/people", ASSERT.owner)).text());
-    const res = await w.http.post("/setup/people/source-tag", { csrf, tag: TAG_ON, enabled: "no" }, ASSERT.owner);
+    for (const topic of ["Bad Topic", "unclassified", "1x"]) {
+      const res = await w.http.post("/setup/people/topic", { csrf, topic, label: "X", confirm: "yes" }, ASSERT.owner);
+      expect(res.status).toBe(400);
+    }
+    expect(w.fake.state.topicsMade).toEqual([]);
+  });
+
+  it("a non-administrator cannot reach the topic form", async () => {
+    const w = world();
+    const res = await w.http.post("/setup/people/topic", { csrf: "x", topic: "deals", label: "Deals", confirm: "yes" }, ASSERT.reader);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(w.fake.state.topicsMade).toEqual([]);
+  });
+
+  it("shows a count of each person's source rules, never the rules", async () => {
+    const w = world();
+    const html = await (await w.http.get("/setup/people", ASSERT.owner)).text();
+    expect(html).toContain("Source rules");
+    expect(w.fake.calls.some((c) => c.fn === "peopleRuleCounts")).toBe(true);
+    expect(w.fake.calls.some((c) => c.fn === "sourceRules")).toBe(false);
+    expect(html).not.toContain("@acme.com");
+    expect(READER).toBeTruthy();
+  });
+
+  it("removing a person goes through the same preview and code", async () => {
+    const w = world();
+    const csrf = csrfIn(await (await w.http.get("/setup/people", ASSERT.owner)).text());
+    const res = await w.http.post("/setup/people/change", { csrf, action: "deactivate", email: "old@example.com" }, ASSERT.owner);
     expect(res.status).toBe(200);
-    const call = w.fake.calls.find((c) => c.fn === "setSourceTag");
-    expect(call?.args.slice(1)).toEqual([TAG_ON, false, true]);
-  });
-
-  it("refuses a tag id that is not an id", async () => {
-    const w = world();
-    const csrf = csrfIn(await (await w.http.get("/setup/people", ASSERT.owner)).text());
-    expect((await w.http.post("/setup/people/source-tag", { csrf, tag: "../x", enabled: "yes" }, ASSERT.owner)).status).toBe(400);
-    expect(w.fake.calls.filter((c) => c.fn === "setSourceTag")).toHaveLength(0);
+    const call = w.fake.calls.find((c) => c.fn === "twoStep");
+    expect(call?.args[1]).toEqual({ fn: "admin_person_deactivate", args: { p_person_email: "old@example.com" } });
   });
 
   it("previews a person add, then applies only with the returned code", async () => {

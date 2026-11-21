@@ -5,7 +5,7 @@ skills and the Engine connector:
 
 | Part | What it does |
 |---|---|
-| `kb-ingest` skill | One run copies new items from ONE source (Gmail, Drive, Fireflies, Calendar) into the Engine, unchanged, with `record_source_item`. No summaries, no judgement. Reports `listed N, saved N`. |
+| `kb-ingest` skill | One run copies new items from ONE source account (Gmail or Fireflies, by address) or ONE source (Drive, Calendar) into the Engine, unchanged, with `record_source_item`. No summaries, no judgement. The Engine keeps only what the person's own inclusion rules include ([source-rules.md](source-rules.md)). Reports `listed N, saved N, left out N`. |
 | `kb-schedule-setup` skill | Walks the person through tool permissions, a first run by hand, and one scheduled task per source on the smallest model. |
 | Engine connector (`.mcp.json`) | Points at the person's Engine (`https://<host>/mcp`), set once at install. |
 
@@ -19,15 +19,26 @@ This is stage 1 of the two stages in [manual.md](manual.md) (load, then
 curate). Claude only loads; the Engine's curator does the judgement on its
 own timer, with no connectors.
 
-1. The scheduled task (smallest model) runs `kb-ingest` for one source.
-2. `get_ingest_plan` (read-only) returns the person's own cursor for that
-   source, `since` (list items newer than this), `max_items` (25 per run),
-   and how to fill each field. A first run looks back 7 days.
-3. Claude lists new items through the source's own connector, oldest first,
+1. The scheduled task (smallest model) runs `kb-ingest` for one source
+   (and, for Gmail and Fireflies, one account: its address).
+2. `get_ingest_plan` returns the person's own cursor for that account,
+   `since` (list items newer than this), `max_items` (25 per run), and how to
+   fill each field. A first run looks back 7 days. For Gmail and Fireflies it
+   also returns the person's inclusion rules and a provider query narrowed by
+   them (Gmail search text; a Fireflies channel and participant filter).
+3. For Gmail and Fireflies, Claude reports the account's labels or channels
+   (`report_ingest_candidates`), the picker for the rule builder, and when
+   the person asked for one, a metadata-only sample of the last 7 days for
+   the dry-run.
+4. Claude lists new items through the source's own connector, oldest first,
    and hands each one over with `record_source_item`, passing the item's date
-   as `cursor`. The Engine stores it as untrusted source data, owned by the
-   caller, versioned by id and text hash; the cursor moves with each item.
-4. Claude replies with one line: `listed N, saved S (...), failed F`.
+   as `cursor`. For Gmail (one item per message) and Fireflies it also passes
+   `account` and `provider` (from/to/cc, label or channel ids, participants,
+   thread id). The Engine checks the item against the person's rules,
+   decides its topic itself, and stores it as untrusted source data owned by
+   the caller, or keeps nothing (`not_included`). The cursor moves with each
+   item.
+5. Claude replies with one line: `listed N, saved S (...), left out L, failed F`.
 
 A missed or failed run catches up next time: the cursor only moves when an
 item arrives. Handing the same item twice is harmless (`unchanged`).

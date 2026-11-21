@@ -79,13 +79,15 @@ export const entitySchemaSchema = z
 
 export const recordSourceItemSchema = z
   .object({
-    source: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/),
+    // Only the sources the Engine knows (the database checks again): mail
+    // handed over under another name would skip the inclusion rules.
+    source: z.enum(["gmail", "fireflies", "drive", "calendar"]),
     source_id: z.string().trim().min(1).max(500),
     title: z.string().max(500).optional(),
     body: z.string().max(500000),
-    // The item's labels, folders or channels, unchanged from the source. There
-    // is no `topics`: an item's topics come only from the tags its owner
-    // switched on (Topics and people, "Found in your sources").
+    // The item's labels, folders or channels, unchanged from the source
+    // (Drive; Gmail and Fireflies use `provider` instead). An item's topic is
+    // never the run's to say: `topics` and `owner` are dropped below.
     tags: z
       .array(
         z
@@ -101,6 +103,29 @@ export const recordSourceItemSchema = z
     source_created_at: z.string().datetime({ offset: true }).optional(),
     metadata: z.record(z.unknown()).optional(),
     cursor: z.string().max(500).optional(),
+    // Gmail and Fireflies (0063): the source account (its address) and the
+    // item's provider metadata. The Engine checks the item against the
+    // caller's own rules for that account and decides the topic itself.
+    account: z.string().trim().max(254).optional(),
+    provider: z
+      .object({
+        message_id: z.string().max(300).optional(),
+        thread_id: z.string().max(300).optional(),
+        meeting_id: z.string().max(300).optional(),
+        from: z.union([z.string().max(5000), z.array(z.string().max(500)).max(200)]).optional(),
+        to: z.union([z.string().max(5000), z.array(z.string().max(500)).max(200)]).optional(),
+        cc: z.union([z.string().max(5000), z.array(z.string().max(500)).max(200)]).optional(),
+        participants: z.array(z.string().max(500)).max(200).optional(),
+        organizer_email: z.string().max(254).optional(),
+        label_ids: z.array(z.string().max(300)).max(200).optional(),
+        channel_ids: z.array(z.string().max(300)).max(200).optional(),
+        date: z.string().max(64).optional(),
+      })
+      .strict()
+      .optional(),
+    // Accepted and DROPPED: the topic and owner are never the run's to say.
+    topics: z.unknown().optional(),
+    owner: z.unknown().optional(),
   })
   .strict();
 

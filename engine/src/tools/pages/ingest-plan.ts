@@ -1,38 +1,53 @@
 import { z } from "zod";
 import type { ToolSpec } from "../../mcp/tool-helpers.js";
 import { providerFor } from "../../sources/index.js";
+import { firefliesFilter, gmailQuery, isRuleSource, parseRules, type Rule } from "../../sources/rules.js";
 import { pageRpc, rowsOf } from "./rpc.js";
 
 /**
- * Read-only plan for one mechanical ingest run (Phase 10.10, stage 1).
+ * The plan for one mechanical ingest run (Phase 10.10, stage 1).
  *
- * A scheduled task on the smallest model calls this first. It gets back the
- * caller's own cursor for the source, the time to list from, a cap per run,
- * and plain steps for listing items and filling record_source_item. It never
- * writes and never returns source text. Scope is fixed here for now; a
- * per-person scope setting can be added later without changing the shape.
+ * A scheduled task on the smallest model calls this first. For Gmail and
+ * Fireflies it names ONE account of the caller's (gmail:<address>,
+ * fireflies:<account>) and gets back the caller's inclusion rules for it and a
+ * provider query NARROWED by them (docs/source-rules.md). The database keeps
+ * only what the rules include, whatever the run hands over; the query only
+ * saves work. It never returns source text.
  */
 
 export const INGEST_SOURCES = ["gmail", "drive", "fireflies", "calendar"] as const;
 export type IngestSource = (typeof INGEST_SOURCES)[number];
 
 const FIRST_RUN_DAYS = 7;
+const SAMPLE_DAYS = 7;
 const MAX_ITEMS = 25;
+const MAX_SAMPLE = 200;
 
-export const getIngestPlanSchema = z.object({ source: z.enum(INGEST_SOURCES) }).strict();
+export const getIngestPlanSchema = z
+  .object({
+    source: z.enum(INGEST_SOURCES),
+    // The source account: the address of the Gmail or Fireflies account the run reads.
+    account: z.string().trim().toLowerCase().email().max(254).optional(),
+  })
+  .strict()
+  .refine((v) => !isRuleSource(v.source) || v.account !== undefined, {
+    message: "account is required for gmail and fireflies: the address of the account this run reads",
+    path: ["account"],
+  });
 
 type Scope = Readonly<Record<string, string>>;
 
-function scopeFor(source: IngestSource, since: string): Scope {
+function scopeFor(source: IngestSource): Scope {
   switch (source) {
     case "gmail":
       return {
-        list: "Search Gmail threads with `query`. Oldest first. Skip threads labelled Spam, Trash or Draft.",
-        query: `after:${Math.floor(Date.parse(since) / 1000)}`,
-        source_id: "the Gmail thread id",
-        title: "the thread subject",
-        body: "every message in the thread, oldest first, each as: From, To, Date, then the message text exactly as read",
-        source_created_at: "the date of the newest message in the thread",
+        list: "Search Gmail MESSAGES with `query` (not threads). Oldest first. Skip messages labelled Spam, Trash or Draft.",
+        source_id: "the Gmail message id",
+        title: "the message subject",
+        body: "the one message: From, To, Cc, Date, then its text exactly as read",
+        source_created_at: "the message date",
+        provider:
+          'for every message: {"message_id", "thread_id", "from", "to": [...], "cc": [...], "label_ids": [the label ids on the message, unchanged], "date"}',
       };
     case "drive":
       return {
@@ -44,11 +59,13 @@ function scopeFor(source: IngestSource, since: string): Scope {
       };
     case "fireflies":
       return {
-        list: "List Fireflies meetings dated after `since`. Oldest first.",
+        list: "List Fireflies meetings dated after `since` that match `filter` (in one of filter.channel_ids, or with one of filter.participants). Oldest first.",
         source_id: "the Fireflies meeting (transcript) id",
         title: "the meeting title",
         body: "the participants line, then the full transcript exactly as read (speaker: text, one line each)",
         source_created_at: "the meeting date and time",
+        provider:
+          'for every meeting: {"meeting_id", "channel_ids": [the channel ids it is in], "participants": [their email addresses], "organizer_email", "date"}',
       };
     case "calendar":
       return {
@@ -67,37 +84,178 @@ function isoOrNull(value: unknown): string | null {
   return Number.isNaN(ms) ? null : new Date(ms).toISOString();
 }
 
+type Cursor = {
+  readonly last_seen: string | null;
+  readonly last_received_at: string | null;
+  readonly items_received: number;
+  readonly items_saved: number;
+  readonly items_skipped?: number;
+};
+
+function sinceFrom(cursor: Cursor | null, backfillFrom: string | null): string {
+  const fallback = new Date(Date.now() - FIRST_RUN_DAYS * 86_400_000).toISOString();
+  return backfillFrom ?? isoOrNull(cursor?.last_seen) ?? isoOrNull(cursor?.last_received_at) ?? fallback;
+}
+
+const str = (v: unknown): string | null => (v != null ? String(v) : null);
+
+async function tagPlan(source: IngestSource, sub: string) {
+  const row = rowsOf(await pageRpc("source_cursor_get", sub, { p_source: source }, "The ingest plan could not be read"))[0];
+  const cursor: Cursor | null = row
+    ? {
+        last_seen: str(row["last_seen_id"]),
+        last_received_at: str(row["last_received_at"]),
+        items_received: Number(row["items_received"] ?? 0),
+        items_saved: Number(row["items_saved"] ?? 0),
+      }
+    : null;
+  const since = sinceFrom(cursor, null);
+  return {
+    source,
+    first_run: cursor === null,
+    cursor,
+    since,
+    max_items: MAX_ITEMS,
+    record_with: "record_source_item",
+    cursor_rule: "Pass cursor = the item's source_created_at (date and time). Hand items over oldest first.",
+    tags_rule:
+      "Pass each item's tags exactly as scope.tags says, unchanged. Never pass topics: the Engine decides an item's topic.",
+    scope: { ...scopeFor(source), tags: providerFor(source)?.howToRead ?? "This source has no tags. Do not pass tags." },
+  };
+}
+
+function summary(rules: readonly Rule[]) {
+  return rules.map((r) => ({
+    kind: r.kind,
+    name: r.name ?? "",
+    topic: r.private ? "private (owner only)" : (r.topic ?? null),
+    broken: r.broken === true,
+  }));
+}
+
+async function rulesPlan(source: "gmail" | "fireflies", account: string, sub: string) {
+  const plan = (await pageRpc(
+    "source_ingest_plan",
+    sub,
+    { p_source: source, p_account: account },
+    "The ingest plan could not be read",
+  )) as Record<string, unknown> | null;
+  const p = plan ?? {};
+  const rules = parseRules(p["rules"]);
+  const raw = (p["cursor"] ?? {}) as Record<string, unknown>;
+  const cursor: Cursor = {
+    last_seen: str(raw["last_seen"]),
+    last_received_at: str(raw["last_received_at"]),
+    items_received: Number(raw["items_received"] ?? 0),
+    items_saved: Number(raw["items_saved"] ?? 0),
+    items_skipped: Number(raw["items_skipped"] ?? 0),
+  };
+  const firstRun = cursor.last_received_at === null;
+  const backfill = p["backfill"] === true ? isoOrNull(p["backfill_from"]) : null;
+  const since = sinceFrom(firstRun ? null : cursor, backfill);
+  const sinceSec = Math.floor(Date.parse(since) / 1000);
+  const sampleSince = Math.floor((Date.now() - SAMPLE_DAYS * 86_400_000) / 1000);
+  const query = source === "gmail" ? gmailQuery(rules, sinceSec) : null;
+  const filter = source === "fireflies" ? firefliesFilter(rules) : null;
+  const nothing = source === "gmail" ? query === null : filter === null;
+  const sampleWanted = p["sample_requested"] === true;
+  const what = source === "gmail" ? "labels" : "channels";
+
+  return {
+    source,
+    account: String(p["account"] ?? account),
+    first_run: firstRun,
+    cursor,
+    since,
+    backfill: backfill !== null,
+    max_items: MAX_ITEMS,
+    rules_version: Number(p["version"] ?? 0),
+    rules: summary(rules),
+    nothing_to_record: nothing,
+    ...(source === "gmail" ? { query } : { filter }),
+    record_with: "record_source_item",
+    record_rule:
+      `Hand over each listed item with account = "${String(p["account"] ?? account)}" and provider = its metadata (scope.provider). ` +
+      "Never pass topics or an owner: the Engine checks the item against the person's own rules, files it itself, and keeps nothing a rule does not include (status not_included). That is normal; carry on.",
+    cursor_rule: "Pass cursor = the item's source_created_at (date and time). Hand items over oldest first.",
+    report_with: "report_ingest_candidates",
+    report_rule:
+      `First, once per run: list the account's ${what} and call report_ingest_candidates with all of them and ${what}_complete: true. ` +
+      (sampleWanted
+        ? `This run must also send a metadata sample: list up to ${MAX_SAMPLE} items from the last ${SAMPLE_DAYS} days with the query "after:${sampleSince}" (no other filter), and pass each one's provider metadata ONLY (no subject, no text) as candidates.`
+        : "No metadata sample is wanted this run."),
+    sample_wanted: sampleWanted,
+    scope: scopeFor(source),
+  };
+}
+
 export const getIngestPlanTool: ToolSpec = {
   name: "get_ingest_plan",
   description:
-    "Read-only. Call first in an ingest run. For one source (gmail, drive, fireflies, calendar) returns YOUR cursor, the time to list from (since), the most items to hand over this run (max_items), and how to fill record_source_item for each item. Writes nothing.",
-  shape: getIngestPlanSchema.shape,
+    "Call first in an ingest run. For one source (gmail, drive, fireflies, calendar) and, for gmail and fireflies, ONE account (its email address): your cursor, the time to list from (since), the most items to hand over (max_items), and how to fill record_source_item. For gmail and fireflies it also returns your inclusion rules and a query narrowed by them; the Engine keeps only what your rules include. Stores no source text.",
+  shape: { source: z.enum(INGEST_SOURCES), account: z.string().max(254).optional() },
   run: async (params, ctx) => {
-    const { source } = getIngestPlanSchema.parse(params);
-    const row = rowsOf(
-      await pageRpc("source_cursor_get", ctx.sub, { p_source: source }, "The ingest plan could not be read"),
-    )[0];
-    const cursor = row
-      ? {
-          last_seen: row["last_seen_id"] != null ? String(row["last_seen_id"]) : null,
-          last_received_at: row["last_received_at"] != null ? String(row["last_received_at"]) : null,
-          items_received: Number(row["items_received"] ?? 0),
-          items_saved: Number(row["items_saved"] ?? 0),
-        }
-      : null;
-    const fallback = new Date(Date.now() - FIRST_RUN_DAYS * 86_400_000).toISOString();
-    const since = isoOrNull(cursor?.last_seen) ?? isoOrNull(cursor?.last_received_at) ?? fallback;
-    return {
-      source,
-      first_run: cursor === null,
-      cursor,
-      since,
-      max_items: MAX_ITEMS,
-      record_with: "record_source_item",
-      cursor_rule: "Pass cursor = the item's source_created_at (date and time). Hand items over oldest first.",
-      tags_rule:
-        "Pass each item's tags exactly as scope.tags says, unchanged. Never pass topics: the Engine files an item under a topic only when its owner switched that tag on.",
-      scope: { ...scopeFor(source, since), tags: providerFor(source)?.howToRead ?? "This source has no tags. Do not pass tags." },
-    };
+    const { source, account } = getIngestPlanSchema.parse(params);
+    if (isRuleSource(source)) return rulesPlan(source, account ?? "", ctx.sub);
+    return tagPlan(source, ctx.sub);
+  },
+};
+
+// ── report_ingest_candidates ────────────────────────────────────────────────
+
+const labelIn = z.object({ id: z.string().trim().min(1).max(300), name: z.string().max(200).optional() }).strict();
+const addrList = z.union([z.string().max(5000), z.array(z.string().max(500)).max(200)]);
+
+/** Metadata only: no subject, no body. Anything else is refused. */
+const candidateIn = z
+  .object({
+    message_id: z.string().max(300).optional(),
+    thread_id: z.string().max(300).optional(),
+    meeting_id: z.string().max(300).optional(),
+    from: addrList.optional(),
+    to: addrList.optional(),
+    cc: addrList.optional(),
+    participants: z.array(z.string().max(500)).max(200).optional(),
+    organizer_email: z.string().max(254).optional(),
+    label_ids: z.array(z.string().max(300)).max(200).optional(),
+    channel_ids: z.array(z.string().max(300)).max(200).optional(),
+    date: z.string().max(64).optional(),
+  })
+  .strict();
+
+export const reportCandidatesSchema = z
+  .object({
+    source: z.enum(["gmail", "fireflies"]),
+    account: z.string().trim().toLowerCase().email().max(254),
+    labels: z.array(labelIn).max(500).optional(),
+    labels_complete: z.boolean().optional(),
+    channels: z.array(labelIn).max(500).optional(),
+    channels_complete: z.boolean().optional(),
+    candidates: z.array(candidateIn).max(500).optional(),
+  })
+  .strict();
+
+export const reportCandidatesTool: ToolSpec = {
+  name: "report_ingest_candidates",
+  description:
+    "During an ingest run (get_ingest_plan says when): report ONE account's Gmail labels or Fireflies channels (id and name, all of them, with labels_complete/channels_complete true), and when asked a metadata-only sample of recent items (ids, from/to/cc, label or channel ids, participants, date; never a subject or text). Feeds your own rule builder and its dry-run. Stores no source text.",
+  shape: reportCandidatesSchema.shape,
+  run: async (params, ctx) => {
+    const p = reportCandidatesSchema.parse(params);
+    const labels = p.source === "gmail" ? p.labels : p.channels;
+    const complete = p.source === "gmail" ? p.labels_complete : p.channels_complete;
+    const data = (await pageRpc(
+      "source_candidates_report",
+      ctx.sub,
+      {
+        p_source: p.source,
+        p_account: p.account,
+        p_candidates: p.candidates ?? null,
+        p_labels: labels ?? null,
+        p_complete: complete === true,
+      },
+      "The report could not be recorded",
+    )) as Record<string, unknown> | null;
+    return { labels: Number(data?.["labels"] ?? 0), candidates: Number(data?.["candidates"] ?? 0) };
   },
 };

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { createCsrf } from "../../src/app/csrf.js";
 import type { SettingsDeps } from "../../src/app/settings-routes.js";
 import type { AppStore, Row, SaveResult } from "../../src/app/store.js";
-import { AppInputError } from "../../src/app/store.js";
+import { AppDeniedError, AppInputError } from "../../src/app/store.js";
 import type { AccessSettings } from "../../src/config/settings.js";
 import { McpAppError } from "../../src/mcp/errors.js";
 import type { EngineMode } from "../../src/setup/mode.js";
@@ -27,8 +27,9 @@ export const PAGE_ID = "11111111-1111-4111-8111-111111111111";
 export const REVIEW_ID = "22222222-2222-4222-8222-222222222222";
 export const ITEM_ID = "33333333-3333-4333-8333-333333333333";
 export const HIST_ID = "44444444-4444-4444-8444-444444444444";
-export const TAG_OFF = "55555555-5555-4555-8555-555555555555";
-export const TAG_ON = "66666666-6666-4666-8666-666666666666";
+export const ACCOUNT_ID = "55555555-5555-4555-8555-555555555555";
+export const OTHER_ACCOUNT = "66666666-6666-4666-8666-666666666666";
+export const RULE_ID = "77777777-7777-4777-8777-777777777777";
 
 /** An in-memory store with one person's rows (READER's). Records every call. */
 export function createFakeStore() {
@@ -55,10 +56,13 @@ export function createFakeStore() {
     modelKey: null as string | null,
     timer: { cron_available: true, net_available: true, vault_available: true, job: null, engine_url: null, enabled: false, tick_secret_set: false, model: "openai-gpt-oss-120b" } as Row,
     topics: [{ topic: "clients", label: "Clients", sensitive: false, people: 2 }] as Row[],
-    sourceTags: [
-      { id: TAG_OFF, source: "gmail", kind: "label", tag_id: "Label_1", name: "Clients/Acme", enabled: false, topic: null, seen: 3, last_seen_at: "2026-11-19T08:00:00Z" },
-      { id: TAG_ON, source: "fireflies", kind: "channel", tag_id: "ch-1", name: "Sales <Calls>", enabled: true, topic: "sales-calls", seen: 9, last_seen_at: "2026-11-19T09:00:00Z" },
+    // READER's one Gmail account and its rules (0063).
+    rules: [
+      { id: RULE_ID, version: 1, kind: "include", name: "Acme", match: { any_address: ["@acme.com"] }, topic: "clients", private: false, broken: false },
     ] as Row[],
+    rulesVersion: 1,
+    savedRules: [] as Array<{ rules: readonly unknown[]; expected: number }>,
+    topicsMade: [] as string[],
     backup: { repo: null, branch: "main", enabled: false, has_token: false, last_status: null, owner_email: OWNER } as Row,
     backupToken: null as string | null,
     pinned: false,
@@ -152,16 +156,77 @@ export function createFakeStore() {
       needAdmin(email);
       return state.topics;
     },
-    sourceTags: async (email) => {
-      rec("sourceTags", email);
-      return own(email) ? state.sourceTags : [];
+    addTopic: async (email, topic, label, sensitive) => {
+      rec("addTopic", email, topic, label, sensitive);
+      needAdmin(email);
+      state.topicsMade = [...state.topicsMade, topic];
+      return true;
     },
-    setSourceTag: async (email, id, enabled, confirm) => {
-      rec("setSourceTag", email, id, enabled, confirm);
-      if (!own(email) || !state.sourceTags.some((t) => t["id"] === id)) throw new AppInputError("that tag is not one of yours");
-      if (!confirm) return { status: "preview", enabled, topic: "clients-acme", topic_exists: false, people: 0, source: "gmail", name: "Clients/Acme" };
-      state.sourceTags = state.sourceTags.map((t) => (t["id"] === id ? { ...t, enabled, topic: t["topic"] ?? "clients-acme" } : t));
-      return { status: enabled ? "on" : "off", topic: "clients-acme" };
+    peopleRuleCounts: async (email) => {
+      rec("peopleRuleCounts", email);
+      needAdmin(email);
+      return [{ email: READER, display_name: "Reader", accounts: 1, rules: state.rules.length }];
+    },
+    // Sources: only READER owns an account; anyone else asking for it is refused (as in 0063).
+    sourceAccounts: async (email) => {
+      rec("sourceAccounts", email);
+      return email === READER
+        ? [{ id: ACCOUNT_ID, source: "gmail", account: "reader@work.example", version: state.rulesVersion, rules: state.rules.length, broken: 0, items_saved: 4, items_skipped: 9, recheck: 0, last_received_at: "2026-11-19T08:00:00Z" }]
+        : [];
+    },
+    addSourceAccount: async (email, source, account) => {
+      rec("addSourceAccount", email, source, account);
+      return { id: ACCOUNT_ID, source, account };
+    },
+    sourceRules: async (email, id) => {
+      rec("sourceRules", email, id);
+      if (email !== READER || id !== ACCOUNT_ID) throw new AppDeniedError("not allowed");
+      return {
+        account_id: ACCOUNT_ID, source: "gmail", account: "reader@work.example", version: state.rulesVersion, rules: state.rules,
+        labels: [{ id: "Label_1", name: "Clients <Acme>", kind: "label" }, { id: "Label_9", name: "Personal", kind: "label" }],
+        topics: ["clients", "board"],
+        suggested_excludes: [{ kind: "exclude", name: "Personal", match: { labels: [{ id: "Label_9", name: "Personal" }] } }],
+        recheck: 0, pages_flagged: 0, sample: { requested: false, reported_at: null, count: 2 }, items_saved: 4, items_skipped: 9,
+      };
+    },
+    saveSourceRules: async (email, id, rules, expected) => {
+      rec("saveSourceRules", email, id, rules, expected);
+      if (email !== READER || id !== ACCOUNT_ID) throw new AppDeniedError("not allowed");
+      if (expected !== state.rulesVersion) throw new AppInputError("the rules changed since you opened them; open them again");
+      state.savedRules = [...state.savedRules, { rules, expected }];
+      state.rules = rules as Row[];
+      state.rulesVersion += 1;
+      return { version: state.rulesVersion, rules: rules.length, refiled: 0, pages_flagged: 0 };
+    },
+    previewSourceRules: async (email, id, rules) => {
+      rec("previewSourceRules", email, id, rules);
+      if (email !== READER || id !== ACCOUNT_ID) throw new AppDeniedError("not allowed");
+      return { total: 2, included: 1, excluded: 0, not_included: 1, rows: [{ date: "2026-11-18T10:00:00Z", from: ["bob@acme.com"], labels: [], decision: "include", rule: "Acme", topic: "clients" }] };
+    },
+    sourceRulesHistory: async (email, id) => {
+      rec("sourceRulesHistory", email, id);
+      if (email !== READER || id !== ACCOUNT_ID) throw new AppDeniedError("not allowed");
+      return { versions: [{ version: 1, created_at: "2026-11-19T08:00:00Z", by: "Reader", rules: state.rules }], audit: [{ at: "2026-11-19T08:00:00Z", action: "rules_saved", version: 1, by: "Reader", detail: { rules: 1 } }] };
+    },
+    recheckSource: async (email, id) => {
+      rec("recheckSource", email, id);
+      return { refiled: 2, removed: 1 };
+    },
+    backfillSource: async (email, id, since) => {
+      rec("backfillSource", email, id, since);
+      return { backfill_from: since };
+    },
+    requestSample: async (email, id) => {
+      rec("requestSample", email, id);
+      return true;
+    },
+    recheckPages: async (email) => {
+      rec("recheckPages", email);
+      return email === READER ? [{ id: PAGE_ID, title: "Acme <Corp>", drawer: "organisations", topics: ["clients"], recheck_at: "2026-11-19T09:00:00Z" }] : [];
+    },
+    pageRecheckDone: async (email, id) => {
+      rec("pageRecheckDone", email, id);
+      return email === READER && id === PAGE_ID;
     },
     people: async (email) => {
       needAdmin(email);

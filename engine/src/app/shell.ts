@@ -42,6 +42,7 @@ export const APP_NAV: readonly NavItem[] = [
   { href: "/app", label: "Home", icon: "home" },
   { href: "/app/knowledge", label: "Knowledge", icon: "folder", group: "Knowledge" },
   { href: "/app/pages", label: "Find a page", icon: "search", group: "Knowledge" },
+  { href: "/app/sources", label: "Sources", icon: "tag", group: "Knowledge" },
   { href: "/app/reviews", label: "Waiting for your yes", icon: "check", group: "Review" },
   { href: "/app/flagged", label: "Flagged items", icon: "flag", group: "Review" },
 ];

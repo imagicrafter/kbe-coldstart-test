@@ -32,6 +32,7 @@ const EVERYONE_TOOLS = [
   "list_entities",
   "record_source_item",
   "related",
+  "report_ingest_candidates",
   "report_issue",
   "save_page",
   "search",

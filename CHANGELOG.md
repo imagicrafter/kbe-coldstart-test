@@ -9,6 +9,44 @@ An entry says so when updating needs more than the steps in
 
 ## Unreleased
 
+### Added
+
+- **Source inclusion rules (migration 0063).** Gmail and Fireflies ingest
+  keeps only what the person's own rules include: per person and source
+  account (`gmail:<address>`, `fireflies:<address>`), ordered, exclude first,
+  first include match wins, default-deny (left-out items are counted, never
+  stored). Each include rule maps to one topic the author holds, or private.
+  Labels and channels are matched by id (rename safe; a deleted one breaks
+  its rule, which then ingests nothing). The database evaluates every item,
+  sets the topic and ignores any topic or owner the run claims; rule lists
+  are append-only versions with an audit log, and each item stamps its rule
+  and version. Narrowing a rule re-files affected items owner-only at once
+  and flags their pages for re-curation; widening is for new items unless the
+  owner asks for a backfill. See [docs/source-rules.md](docs/source-rules.md).
+- **Sources screen** (`/app/sources`) for every person's own accounts and
+  rules: ordered list with up/down, picker for reported labels and channels,
+  address chips, topic picker or private, suggested excludes, a dry-run on a
+  7-day metadata-only sample, versions and audit, re-check, backfill.
+- **`report_ingest_candidates`** MCP tool: the run reports an account's
+  labels or channels and, when asked, a metadata-only sample.
+
+### Changed
+
+- **Updating needs the plugin too.** `get_ingest_plan` and
+  `record_source_item` need `account` (and `provider` metadata) for Gmail and
+  Fireflies; an old plugin's Gmail and Fireflies items are refused with a
+  message saying so. Gmail is now ingested per message, not per thread.
+  Update the plugin (0.2.0) and add `account <address>` to each Gmail and
+  Fireflies scheduled task prompt. Until a person writes rules on Sources,
+  nothing from those accounts is kept (switched-on labels and channels were
+  turned into rules by the migration).
+- **Topics are made by administrators only** (Topics and people, with a
+  preview and a yes). The "Found in your sources" switch is gone; Topics and
+  people shows each person's rule count, never the rules.
+- **One topic per page.** The curator writes an item only into pages with
+  exactly the item's topic; facts from another topic go to a separate page on
+  the same key. `record_source_item` ignores `topics` instead of refusing it.
+
 ### Fixed
 
 - **Consensus no longer drops a deal over its name.** Runs compare deals and

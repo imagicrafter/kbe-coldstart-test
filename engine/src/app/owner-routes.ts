@@ -12,6 +12,7 @@ import {
 } from "./knowledge-routes.js";
 import { editedProperties, MAX_BODY } from "./page-view.js";
 import type { Row } from "./store.js";
+import { addSourceRoutes } from "./sources-routes.js";
 
 /**
  * The owner screens, under /app, for any active person on this Engine:
@@ -26,6 +27,7 @@ import type { Row } from "./store.js";
  *   /app/pages/:id/edit        its properties form and Markdown text
  *   /app/pages/:id/history     its versions
  *   /app/history/:id           one version, its diff to now; restore
+ *   /app/sources...            your own source accounts and inclusion rules (sources-routes.ts)
  *
  * Everything acts on the signed-in person's OWN rows; the database enforces
  * that (migration 0054). Approvals and releases exist only here: no MCP tool
@@ -79,6 +81,7 @@ const home: Handler = async (c, me) => {
 <li><a href="/app/reviews">Waiting for your yes</a>: ${esc(who["pending_reviews"] ?? 0)}</li>
 <li><a href="/app/flagged">Flagged items</a>: ${esc(who["flagged"] ?? 0)}</li>
 <li><a href="/app/knowledge">Knowledge</a>: ${esc(who["pages"] ?? 0)} pages in drawers</li>
+<li><a href="/app/sources">Sources</a>: your accounts and the rules that decide what is kept</li>
 </ul>`);
   return page(c, "/app", "Your Engine", body);
 };
@@ -315,5 +318,6 @@ export function makeOwnerRoutes(use: () => ScreenDeps): Hono {
   app.get("/pages/:id/history", h(history));
   app.get("/history/:id", h(version));
   app.post("/history/:id/restore", h(restore));
+  addSourceRoutes(app, h);
   return app;
 }

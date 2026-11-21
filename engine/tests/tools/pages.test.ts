@@ -57,6 +57,7 @@ describe("page tools are listed", () => {
         "get_source_item",
         "list_entities",
         "record_source_item",
+        "report_ingest_candidates",
         "related",
         "save_page",
         "update_page",
@@ -218,20 +219,61 @@ describe("source items", () => {
     expect(JSON.stringify(out)).not.toContain("secret text");
   });
 
-  it("record_source_item refuses topics: they come only from switched-on source tags", async () => {
+  it("record_source_item drops a claimed topic and owner: the Engine decides them", async () => {
+    rpcMock.mockResolvedValue({ data: { id: "s1", version: 1, status: "new" }, error: null });
+    await tool("record_source_item").run(
+      {
+        source: "gmail",
+        account: "ann@work.example",
+        source_id: "m1",
+        body: "x",
+        topics: ["clients"],
+        owner: "eve@example.com",
+        provider: { message_id: "m1", thread_id: "t1", from: "bob@acme.com", label_ids: ["Label_1"] },
+      },
+      CTX,
+    );
+    const item = rpcMock.mock.calls[0]![1].p_item;
+    expect(item.topics).toBeUndefined();
+    expect(item.owner).toBeUndefined();
+    expect(item.account).toBe("ann@work.example");
+    expect(item.provider.thread_id).toBe("t1");
+    expect(rpcMock.mock.calls[0]![1].p_oauth_subject).toBe("sub-ann");
+  });
+
+  it("record_source_item reports an item no rule includes as not_included, with no id", async () => {
+    rpcMock.mockResolvedValue({ data: { id: null, version: null, status: "not_included", reason: "excluded" }, error: null });
+    const out = await tool("record_source_item").run(
+      { source: "gmail", account: "ann@work.example", source_id: "m2", body: "x", provider: { message_id: "m2" } },
+      CTX,
+    );
+    expect(out).toEqual({ id: null, version: null, status: "not_included", reason: "excluded" });
+  });
+
+  it("record_source_item refuses unknown provider metadata (no subject or text there)", async () => {
     await expect(
-      tool("record_source_item").run({ source: "gmail", source_id: "t1", body: "x", topics: ["clients"] }, CTX),
+      tool("record_source_item").run(
+        { source: "gmail", account: "ann@work.example", source_id: "m3", body: "x", provider: { subject: "Hi" } },
+        CTX,
+      ),
     ).rejects.toThrow();
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("record_source_item sends no tags for a source without a provider", async () => {
+  it("record_source_item sends no tags for a source whose provider has none", async () => {
     rpcMock.mockResolvedValue({ data: { id: "s1", version: 1, status: "new" }, error: null });
     await tool("record_source_item").run(
-      { source: "notes", source_id: "n1", body: "x", tags: [{ id: "a", name: "A" }] },
+      { source: "calendar", source_id: "n1", body: "x", tags: [{ id: "a", name: "A" }] },
       CTX,
     );
     expect(rpcMock.mock.calls[0]![1].p_item.tags).toEqual([]);
+  });
+
+  it("record_source_item refuses a source the Engine does not know (mail under another name would skip the rules)", async () => {
+    for (const source of ["notes", "mail", "Gmail"]) {
+      await expect(tool("record_source_item").run({ source, source_id: "n1", body: "x" }, CTX)).rejects.toThrow();
+    }
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("get_source_item returns the body only inside untrusted_source_text", async () => {
