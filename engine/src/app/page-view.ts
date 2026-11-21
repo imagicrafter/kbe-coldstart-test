@@ -96,14 +96,33 @@ export function linksPanelHtml(links: Row | null): string {
   return `<aside class="card links-panel"><h2>Links</h2><h3>Related (${esc(out.length)})</h3>${list(out)}<h3>Backlinks (${esc(inn.length)})</h3>${list(inn)}</aside>`;
 }
 
-export type ViewActions = { readonly pinForm: string; readonly reviewForm: string; readonly reindexForm: string };
+/**
+ * "Last change" at the top of a page: when, by whom (a person or the
+ * curator), from which source item, and a link to that change's diff (the
+ * version before the current one, compared with now) or to the history.
+ */
+export function lastChangeHtml(p: Row, history: readonly Row[]): string {
+  const id = str(p["id"]);
+  const latest = history[0];
+  const before = history[1];
+  const by = str(latest?.["saved_by"]) || (p["generated"] && typeof p["generated"] === "object" ? "the curator" : "");
+  const sources = Array.isArray(p["sources"]) ? (p["sources"] as unknown[]) : [];
+  const last = sources[sources.length - 1];
+  const ref = last && typeof last === "object" ? (last as Row) : null;
+  const item = ref ? ` · from ${esc(ref["source"])} ${esc(ref["source_id"])}${ref["version"] != null ? ` (version ${esc(ref["version"])})` : ""}` : "";
+  const href = before ? `/app/history/${str(before["id"])}` : `/app/pages/${id}/history`;
+  const when_ = str(latest?.["saved_at"]) || str(p["updated_at"]);
+  return `<p class="hint last-change"><strong>Last change</strong> ${esc(when(when_))}${by ? ` by ${esc(by)}` : ""}${item} · <a href="${esc(href)}">${before ? "See what changed" : "History"}</a></p>`;
+}
 
-export function pageViewHtml(p: Row, drawer: DrawerDef | undefined, links: Row | null, actions: ViewActions): string {
+export type ViewActions ={ readonly pinForm: string; readonly reviewForm: string; readonly reindexForm: string };
+
+export function pageViewHtml(p: Row, drawer: DrawerDef | undefined, links: Row | null, actions: ViewActions, history: readonly Row[] = []): string {
   const id = str(p["id"]);
   const pending = p["summary_pending"] === true ? ' <span class="badge warn">summary pending</span>' : "";
   const bar = `<div class="page-actions"><a class="button" href="/app/pages/${esc(id)}/edit">${icon("template", 16)}<span>Edit</span></a><a class="button secondary" href="/app/pages/${esc(id)}/history">${icon("clock", 16)}<span>History</span></a>${actions.pinForm}${actions.reviewForm}${actions.reindexForm}</div>`;
   const crumb = `<p class="hint crumbs"><a href="/app/knowledge">Knowledge</a> / <a href="/app/knowledge/${esc(p["drawer"])}">${esc(drawer?.label ?? p["drawer"])}</a>${pending}</p>`;
-  return `${crumb}${bar}<div class="page-grid"><div class="page-main">${propertiesHtml(p, drawer)}<article class="card markdown">${renderMarkdown(str(p["body"]))}</article></div>${linksPanelHtml(links)}</div>`;
+  return `${crumb}${bar}${lastChangeHtml(p, history)}<div class="page-grid"><div class="page-main">${propertiesHtml(p, drawer)}<article class="card markdown">${renderMarkdown(str(p["body"]))}</article></div>${linksPanelHtml(links)}</div>`;
 }
 
 // ── the edit form ───────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 ---
 name: kb-ingest
-description: Copy new items from ONE source (gmail, drive, fireflies or calendar) into the person's knowledge Engine, unchanged, with record_source_item. Mechanical only - no summaries, no judgement. Use when a scheduled task or the person says "run kb-ingest for gmail", "ingest my mail / Drive / meetings / calendar into the Engine", or "kb-ingest <source>". One source per run.
+description: Copy new items from ONE source (gmail, drive, fireflies or calendar) into the person's Quantabase (their knowledge Engine), unchanged, with record_source_item. Mechanical only - no summaries, no judgement. Use when a scheduled task or the person says "run kb-ingest for gmail", "ingest my mail / Drive / meetings / calendar into the Engine", or "kb-ingest <source>". One source per run.
 ---
 
 # kb-ingest: copy new items into the Engine
@@ -46,6 +46,7 @@ It returns:
 - `scope.query` (Gmail only): the exact search text to use
 - `scope.source_id`, `scope.title`, `scope.body`, `scope.source_created_at`:
   what to put in each field of `record_source_item`
+- `scope.tags`: what to pass in `tags` (the item's labels, folders or channels)
 - `cursor_rule`: what to pass as `cursor`
 
 If the call fails, stop and report:
@@ -79,11 +80,18 @@ For each item, read it in full, then call `record_source_item` once with:
   "title": "<as scope.title says>",
   "body": "<as scope.body says, text exactly as read>",
   "source_created_at": "<as scope.source_created_at says, ISO date and time with time zone, e.g. 2026-11-19T09:30:00Z>",
-  "cursor": "<the same value as source_created_at>"
+  "cursor": "<the same value as source_created_at>",
+  "tags": [{"kind": "<label, folder, description or channel>", "id": "<the source's id>", "name": "<the name as shown>"}]
 }
 ```
 
-- Do not add `topics`. Do not add anything not listed above.
+- `tags`: the item's labels (Gmail), folder and description (Drive) or
+  channels (Fireflies), **unchanged**, exactly as `scope.tags` says. Pass all
+  of them; do not choose, rename or skip any. The Engine drops the ones that
+  never count. Calendar events have none: leave `tags` out.
+- Never add `topics` (the Engine refuses it). An item is filed under a topic
+  only when its owner switched that tag on in Quantabase. Do not add
+  anything not listed above.
 - If the body is longer than 500,000 characters, keep the first 500,000 and
   add `"metadata": {"truncated": true}`.
 - The reply has `status`: `new`, `new_version` or `unchanged`. Count each.

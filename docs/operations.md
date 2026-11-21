@@ -93,7 +93,9 @@ Every run, whether or not the curator is on:
 
 - reads failed pokes since the last run from `net._http_response` (cron
   reports success even when the HTTP call failed) and logs them;
-- thins page history (`page_history_prune`).
+- thins page history (`page_history_prune`): every version for 30 days, then
+  the latest of each day up to a year, then the latest of each month; the
+  newest 10 versions of every page are always kept, whatever their age.
 
 When the curator is on and `kbe_model_key` is in the vault it also applies
 approved reviews, curates up to `batch_size` items (default 10) and writes

@@ -196,14 +196,42 @@ describe("source items", () => {
   it("record_source_item hands the item over and returns no text", async () => {
     rpcMock.mockResolvedValue({ data: { id: "s1", version: 1, status: "new" }, error: null });
     const out = await tool("record_source_item").run(
-      { source: "gmail", source_id: "t1", body: "secret text", topics: ["clients"], cursor: "100" },
+      {
+        source: "gmail",
+        source_id: "t1",
+        body: "secret text",
+        cursor: "100",
+        tags: [
+          { id: "INBOX", name: "INBOX" },
+          { id: "Label_7", name: "Clients", kind: "label" },
+        ],
+      },
       CTX,
     );
     const [fn, args] = rpcMock.mock.calls[0]!;
     expect(fn).toBe("source_item_record");
     expect(args.p_oauth_subject).toBe("sub-ann");
     expect(args.p_item.untrusted).toBeUndefined();
+    // Tags go through the source's provider: Gmail's own labels are dropped.
+    expect(args.p_item.tags).toEqual([{ kind: "label", id: "Label_7", name: "Clients" }]);
+    expect(args.p_item.topics).toBeUndefined();
     expect(JSON.stringify(out)).not.toContain("secret text");
+  });
+
+  it("record_source_item refuses topics: they come only from switched-on source tags", async () => {
+    await expect(
+      tool("record_source_item").run({ source: "gmail", source_id: "t1", body: "x", topics: ["clients"] }, CTX),
+    ).rejects.toThrow();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("record_source_item sends no tags for a source without a provider", async () => {
+    rpcMock.mockResolvedValue({ data: { id: "s1", version: 1, status: "new" }, error: null });
+    await tool("record_source_item").run(
+      { source: "notes", source_id: "n1", body: "x", tags: [{ id: "a", name: "A" }] },
+      CTX,
+    );
+    expect(rpcMock.mock.calls[0]![1].p_item.tags).toEqual([]);
   });
 
   it("get_source_item returns the body only inside untrusted_source_text", async () => {

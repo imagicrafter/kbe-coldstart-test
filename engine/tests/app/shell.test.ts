@@ -24,15 +24,15 @@ const noScriptNoStyle = (html: string) => {
 };
 
 describe("the product name", () => {
-  it("app and setup pages say Knowledge Base Engine, never AI Engine", () => {
+  it("app and setup pages say Quantabase, never AI Engine", () => {
     for (const html of [appLayout("app", "/app", "Home", ""), appLayout("setup", "/setup", "X", ""), layout("Set up", "")]) {
-      expect(html).toContain("Knowledge Base Engine");
+      expect(html).toContain("Quantabase");
       expect(html).not.toContain("AI Engine");
     }
   });
 
   it("the dashboard brand drops the old and the new suffix", () => {
-    expect(brandName("Acme's Knowledge Base Engine")).toBe("Acme");
+    expect(brandName("Acme's Quantabase")).toBe("Acme");
     expect(brandName("Acme's AI Engine")).toBe("Acme");
   });
 });

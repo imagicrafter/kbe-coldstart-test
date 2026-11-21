@@ -13,7 +13,7 @@ import { MARK_ADMIN, MARK_TREE, MARK_TREE_END, MARK_USER } from "./chrome.js";
  * (Indexing, Settings > setup screens) for administrators and on /setup.
  */
 
-export const PRODUCT_NAME = "Knowledge Base Engine";
+export const PRODUCT_NAME = "Quantabase";
 
 export type Area = "setup" | "app";
 

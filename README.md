@@ -1,6 +1,6 @@
-# kb-engine
+# Quantabase
 
-A private knowledge Engine for one person or one small organisation. It
+Quantabase (repository and package name: `kb-engine`) is a private knowledge Engine for one person or one small organisation. It
 reads the places your knowledge already lives, writes a short summary of
 each document, and lets Claude search it for you and for the people you
 choose. Each person sees only the topics they have been granted.

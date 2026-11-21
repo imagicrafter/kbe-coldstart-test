@@ -126,7 +126,7 @@ as a short summary and get a yes on the summary.
 **Batch 1: the Engine and its owner**
 1. A short id for the Engine: lower-case letters, digits and dashes (for
    example `acme`). It names the app and the local folder.
-2. A display name (for example "Acme's Knowledge Base Engine").
+2. A display name (for example "Acme's Quantabase").
 3. The owner's email. The owner is the first administrator and the only
    person who can see untagged material. It cannot be changed later.
 4. How the owner's name appears in meeting notes (one or more spellings).
@@ -302,7 +302,7 @@ Build the command from the interview. One `--topic` per topic; add
 `:sensitive` for a sensitive one. `--sources` lists the optional sources.
 
 ```
-python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's Knowledge Base Engine" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
+python -m kbe repo init --create acme/knowledge --engine-id acme --engine-name "Acme's Quantabase" --owner-email owner@example.com --owner-name "Pat Owner" --topic consulting=Consulting --topic properties="Rental Properties" --topic private=Private:sensitive --sources drive,fireflies --dry-run
 ```
 
 Show the plan, get a yes, run it again with `--yes` in place of `--dry-run`.

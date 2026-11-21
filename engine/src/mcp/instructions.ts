@@ -9,7 +9,7 @@ import type { EngineConfig } from "../config/engine-config.js";
  * themselves be private, and every signed-in caller reads this text.
  */
 
-const FALLBACK_NAME = "this Knowledge Base Engine";
+const FALLBACK_NAME = "this Quantabase";
 
 function topicsLine(config: EngineConfig | null): string {
   if (!config || config.domains.length === 0) {

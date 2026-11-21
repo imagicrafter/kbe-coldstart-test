@@ -11,6 +11,50 @@ An entry says so when updating needs more than the steps in
 
 ### Changed
 
+- **Product name: Quantabase.** The app, the status page, the plugin and the
+  docs say Quantabase (was "Knowledge Base Engine"). Internal identifiers,
+  package names, environment variables, the database schema and the
+  repository name are unchanged.
+- **Topics come from source tags (migration 0060).** The ingest run passes
+  each item's Gmail labels, Drive folders/description tags and Fireflies
+  channels (`record_source_item`, `tags`); `topics` is refused. New tags show
+  on Topics and people under "Found in your sources", off by default; the
+  owner switches one on (with a preview) to make or reuse a topic. Items are
+  filed only under switched-on tags' topics. The free-text "New topic" box
+  and `app_topic_add` for the service are gone; config-declared topics stay
+  for the pullers and migration. See `docs/source-tags.md`.
+- **Entity rules are template config.** The deal rule, links between
+  drawers, drawer icons and meeting-key sources moved from code into the
+  template YAML (`icon`, `curator.links_to`, `curator.notes`,
+  `curator.required_when`, `key_rule.sources`); see `docs/templates.md`.
+- **Required drawers are checked.** When an item matches a drawer's
+  `required_when` pattern (consulting/membership deals: money, price, quote,
+  proposal, SOW) and the reply makes no page there, the curator asks once
+  more, then records a failed check.
+- **Repeated facts are skipped.** A line near-identical to one already on
+  the page (ignoring dates) is not added again, e.g. from a re-sent email.
+- **Page viewer** shows "Last change" (when, by whom, from which item) with a
+  link to that change's diff.
+
+- **Page history keeps the newest 10 versions** of every page whatever their
+  age, on top of the time thinning (migration 0061).
+
+- **Consensus curation (migration 0062).** Each item is curated twice with
+  the primary model in parallel; only structured decisions are compared
+  (target pages and create/patch, field values), never wording. Agreement
+  applies run 1. A difference brings one tiebreak run (default
+  deepseek-v4.1-flash) and each decision goes to the majority, with patch
+  text from a run on the winning side. A decision with no majority is
+  dropped (not queued) and listed under "Uncertain decisions" on Indexing.
+  The required-drawer check runs on the merged result. Settings:
+  `curator_settings.consensus` (default on), `model` (primary),
+  `tiebreak_model`. Run stats count agreed / tiebreak / uncertain and tokens.
+
+### Follow-up
+
+- Rename the repository, the npm package, the plugin id and internal
+  identifiers from `kb-engine` to Quantabase.
+
 - **The curator applies by default.** New deal, offer, program and property
   pages and stage/value changes apply on their own (undoable from page
   history). A change waits for a yes only when the item was flagged as

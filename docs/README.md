@@ -27,6 +27,8 @@ Start with the page that matches what you are doing.
 | [operations.md](operations.md) | Health, the issue log, updates, backups, restoring, removing a deployment |
 | [roles.md](roles.md) | Reader, reviewer, administrator, owner; topics and grants |
 | [tagging.md](tagging.md) | How a document gets its topics, per source |
+| [source-tags.md](source-tags.md) | Topics made from labels, folders and channels found at ingest; the provider interface for adding a source |
+| [templates.md](templates.md) | The entity template YAML: drawers, keys, signals, links, required patterns |
 | [security.md](security.md) | Sign-in, setup mode, the setup page, the Cloudflare token, what is and is not verified against a live account, source text and the model, mail |
 | [care-plan.md](care-plan.md) | Optional read-only support access to the issue log |
 | [plugin.md](plugin.md) | The Claude plugin: ingest skill, scheduled tasks, install on Pro and Team, the A4 test |

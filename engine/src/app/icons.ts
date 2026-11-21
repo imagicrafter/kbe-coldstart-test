@@ -1,3 +1,5 @@
+import { loadTemplates } from "../entities/templates.js";
+
 /**
  * Outline icons drawn as inline SVG on the server (no script, no icon font).
  * The path data is from Heroicons v1 "outline" (MIT License, Copyright (c)
@@ -41,24 +43,19 @@ export function icon(name: IconName, size = 20): string {
   return `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${PATHS[name]}"/></svg>`;
 }
 
-/** The icon for a drawer (entity type). Unknown drawers get a folder. */
-const DRAWER_ICONS: Readonly<Record<string, IconName>> = {
-  people: "user",
-  organisations: "building",
-  projects: "briefcase",
-  deals: "dollar",
-  meetings: "calendar",
-  concepts: "bulb",
-  decisions: "scale",
-  playbooks: "book",
-  research: "search",
-  properties: "house",
-  sites: "pin",
-  vendors: "truck",
-  offers: "tag",
-  programs: "collection",
-};
+export const ICON_NAMES: ReadonlySet<string> = new Set(Object.keys(PATHS));
 
+/** Drawer id to its `icon` in the entity templates (first template wins). */
+const DRAWER_ICONS: ReadonlyMap<string, string> = new Map(
+  [...loadTemplates().values()]
+    .flatMap((t) => t.drawers)
+    .filter((d) => d.icon !== undefined)
+    .reverse()
+    .map((d) => [d.id, d.icon ?? "folder"] as const),
+);
+
+/** The icon for a drawer (entity type), from its template. Unknown drawers get a folder. */
 export function drawerIcon(drawer: string): IconName {
-  return DRAWER_ICONS[drawer] ?? "folder";
+  const name = DRAWER_ICONS.get(drawer);
+  return name !== undefined && ICON_NAMES.has(name) ? (name as IconName) : "folder";
 }

@@ -125,6 +125,8 @@ async function curateItems(deps: CurateDeps, mode: TickMode, batchSize: number, 
         add("items");
         add(result.outcome);
         add("queued_changes", result.queued);
+        if (result.consensus) add(`consensus_${result.consensus}`);
+        add("tokens", result.tokens ?? 0);
       } catch (err) {
         await deps.store.done(item.id, "failed", [], err instanceof Error ? err.message : "error").catch(() => undefined);
         add("items");
@@ -147,9 +149,16 @@ async function curatorWork(deps: TickDeps & { now: () => Date }, mode: TickMode,
   }
   const model = (deps.makeModel ?? doInference)(settings.model, key);
   const schema = entitySchema(settings.templates);
+  const consensus = await deps.store.consensus().catch(() => ({ enabled: false, tiebreakModel: "" }));
+  stats["consensus"] = consensus.enabled;
   await applyReviews(deps, add);
   await curateItems(
-    { store: deps.store, model, modelName: settings.model, schema, now: deps.now },
+    {
+      store: deps.store, model, modelName: settings.model, schema, now: deps.now,
+      ...(consensus.enabled
+        ? { consensus: { tiebreak: (deps.makeModel ?? doInference)(consensus.tiebreakModel, key), tiebreakName: consensus.tiebreakModel } }
+        : {}),
+    },
     mode,
     settings.batchSize,
     until,

@@ -188,6 +188,20 @@ export const store = {
     await call("curator_item_done", { p_item_id: itemId, p_outcome: outcome, p_pages: pages, p_error: error ?? null });
   },
 
+  /** A decision the consensus runs could not settle (0062): shown on Indexing. */
+  async uncertain(itemId: string, decision: string, proposals: readonly string[]): Promise<void> {
+    await call("curator_uncertain_record", { p_item_id: itemId, p_decision: decision, p_proposals: proposals });
+  },
+
+  /** Consensus settings (0062): on/off and the tiebreak model. */
+  async consensus(): Promise<{ readonly enabled: boolean; readonly tiebreakModel: string }> {
+    const r = (await call("curator_consensus_get")) as Record<string, unknown> | null;
+    return {
+      enabled: r?.["enabled"] !== false,
+      tiebreakModel: typeof r?.["tiebreak_model"] === "string" ? r["tiebreak_model"] : "deepseek-v4.1-flash",
+    };
+  },
+
   async candidates(itemId: string, keys: readonly string[], query: string, limit = 8): Promise<readonly PageRow[]> {
     return rows(
       await call("curator_candidates", { p_item_id: itemId, p_keys: keys, p_query: query, p_limit: limit }),

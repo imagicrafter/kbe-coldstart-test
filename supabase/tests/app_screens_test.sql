@@ -57,7 +57,8 @@ begin
     assert not has_function_privilege('anon', 'workspace.app_templates_set(text, text[])', 'execute'), 'anon app_templates_set';
     assert not has_function_privilege('authenticated', 'workspace.app_templates_set(text, text[])', 'execute'), 'authenticated app_templates_set';
     assert not has_function_privilege('kb_ingest', 'workspace.app_templates_set(text, text[])', 'execute'), 'kb_ingest app_templates_set';
-    assert has_function_privilege('kb_engine', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'kb_engine app_topic_add';
+    -- 0060: topics come from source tags; the service can no longer add one by name.
+    assert not has_function_privilege('kb_engine', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'kb_engine app_topic_add';
     assert not has_function_privilege('anon', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'anon app_topic_add';
     assert not has_function_privilege('authenticated', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'authenticated app_topic_add';
     assert not has_function_privilege('kb_ingest', 'workspace.app_topic_add(text, text, text, boolean)', 'execute'), 'kb_ingest app_topic_add';

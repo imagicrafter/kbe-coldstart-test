@@ -27,6 +27,8 @@ export const PAGE_ID = "11111111-1111-4111-8111-111111111111";
 export const REVIEW_ID = "22222222-2222-4222-8222-222222222222";
 export const ITEM_ID = "33333333-3333-4333-8333-333333333333";
 export const HIST_ID = "44444444-4444-4444-8444-444444444444";
+export const TAG_OFF = "55555555-5555-4555-8555-555555555555";
+export const TAG_ON = "66666666-6666-4666-8666-666666666666";
 
 /** An in-memory store with one person's rows (READER's). Records every call. */
 export function createFakeStore() {
@@ -53,6 +55,10 @@ export function createFakeStore() {
     modelKey: null as string | null,
     timer: { cron_available: true, net_available: true, vault_available: true, job: null, engine_url: null, enabled: false, tick_secret_set: false, model: "openai-gpt-oss-120b" } as Row,
     topics: [{ topic: "clients", label: "Clients", sensitive: false, people: 2 }] as Row[],
+    sourceTags: [
+      { id: TAG_OFF, source: "gmail", kind: "label", tag_id: "Label_1", name: "Clients/Acme", enabled: false, topic: null, seen: 3, last_seen_at: "2026-11-19T08:00:00Z" },
+      { id: TAG_ON, source: "fireflies", kind: "channel", tag_id: "ch-1", name: "Sales <Calls>", enabled: true, topic: "sales-calls", seen: 9, last_seen_at: "2026-11-19T09:00:00Z" },
+    ] as Row[],
     backup: { repo: null, branch: "main", enabled: false, has_token: false, last_status: null, owner_email: OWNER } as Row,
     backupToken: null as string | null,
     pinned: false,
@@ -146,10 +152,16 @@ export function createFakeStore() {
       needAdmin(email);
       return state.topics;
     },
-    addTopic: async (email, topic, label, sensitive) => {
-      rec("addTopic", email, topic, label, sensitive);
-      needAdmin(email);
-      return true;
+    sourceTags: async (email) => {
+      rec("sourceTags", email);
+      return own(email) ? state.sourceTags : [];
+    },
+    setSourceTag: async (email, id, enabled, confirm) => {
+      rec("setSourceTag", email, id, enabled, confirm);
+      if (!own(email) || !state.sourceTags.some((t) => t["id"] === id)) throw new AppInputError("that tag is not one of yours");
+      if (!confirm) return { status: "preview", enabled, topic: "clients-acme", topic_exists: false, people: 0, source: "gmail", name: "Clients/Acme" };
+      state.sourceTags = state.sourceTags.map((t) => (t["id"] === id ? { ...t, enabled, topic: t["topic"] ?? "clients-acme" } : t));
+      return { status: enabled ? "on" : "off", topic: "clients-acme" };
     },
     people: async (email) => {
       needAdmin(email);
@@ -248,7 +260,8 @@ export function createFakeStore() {
       return {
         pages: 1500, summaries_pending: 3, items_waiting: 2, items_flagged: 1, items_failed: 4,
         last_run: { started_at: "2026-11-20T10:00:00Z", status: "ok", stats: { items: 1, applied: 3 } },
-        curator: { enabled: true, model: "openai-gpt-oss-120b", has_engine_url: true },
+        curator: { enabled: true, model: "openai-gpt-oss-120b", has_engine_url: true, consensus: true, tiebreak_model: "deepseek-v4.1-flash" },
+        uncertain: [{ item_title: "Mail from <Acme>", source: "gmail", decision: "field:deal:acme.com-x:stage", proposals: ['"lead"', '"proposal"', '"won"'], created_at: "2026-11-21T10:00:00Z" }],
         has_model_key: true, backup: { enabled: true, last_finished_at: "2026-11-20T03:00:00Z", last_status: "done" },
       };
     },

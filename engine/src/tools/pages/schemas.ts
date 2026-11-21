@@ -83,7 +83,21 @@ export const recordSourceItemSchema = z
     source_id: z.string().trim().min(1).max(500),
     title: z.string().max(500).optional(),
     body: z.string().max(500000),
-    topics: z.array(z.string().min(1).max(64)).max(20).optional(),
+    // The item's labels, folders or channels, unchanged from the source. There
+    // is no `topics`: an item's topics come only from the tags its owner
+    // switched on (Topics and people, "Found in your sources").
+    tags: z
+      .array(
+        z
+          .object({
+            id: z.string().max(1000).optional(),
+            name: z.string().max(5000).optional(),
+            kind: z.string().max(64).optional(),
+          })
+          .strict(),
+      )
+      .max(200)
+      .optional(),
     source_created_at: z.string().datetime({ offset: true }).optional(),
     metadata: z.record(z.unknown()).optional(),
     cursor: z.string().max(500).optional(),

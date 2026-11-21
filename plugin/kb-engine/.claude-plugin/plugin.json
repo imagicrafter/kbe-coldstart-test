@@ -1,8 +1,8 @@
 {
   "name": "kb-engine",
-  "displayName": "KB Engine",
+  "displayName": "Quantabase",
   "version": "0.1.0",
-  "description": "Feed your own knowledge Engine from Claude: a mechanical ingest skill that copies new Gmail threads, Drive files, Fireflies meetings and Calendar events into your Engine unchanged, and a setup skill that schedules one ingest task per source on the smallest model. Curation happens on the Engine, not in Claude.",
+  "description": "Quantabase: feed your own knowledge Engine from Claude: a mechanical ingest skill that copies new Gmail threads, Drive files, Fireflies meetings and Calendar events into your Engine unchanged, and a setup skill that schedules one ingest task per source on the smallest model. Curation happens on the Engine, not in Claude.",
   "author": {
     "name": "imagicrafter.ai",
     "url": "https://imagicrafter.ai"
@@ -14,7 +14,7 @@
   "userConfig": {
     "engine_url": {
       "type": "string",
-      "title": "Your Knowledge Base Engine address (ends in /mcp)",
+      "title": "Your Quantabase address (ends in /mcp)",
       "description": "Paste the connector address from your Engine's sign-in setup page or its Health screen. Example: https://kb.example.com/mcp. Replace the whole box, including any ${...} text already in it.",
       "required": true
     }

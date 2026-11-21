@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { makeOwnerRoutes } from "../../src/app/owner-routes.js";
 import { makeIndexingRoutes } from "../../src/app/indexing-routes.js";
 import { makeSettingsRoutes } from "../../src/app/settings-routes.js";
-import { editedProperties } from "../../src/app/page-view.js";
+import { editedProperties, lastChangeHtml } from "../../src/app/page-view.js";
 import { listColumns } from "../../src/app/knowledge-routes.js";
 import { fillChrome, roleLabel } from "../../src/app/chrome.js";
 import { appLayout } from "../../src/app/html.js";
@@ -142,6 +142,30 @@ describe("the Knowledge screens", () => {
   });
 });
 
+describe("last change", () => {
+  it("the page says when it last changed, by whom, from which item, with a link to the history", async () => {
+    const w = world();
+    w.fake.state.page = { ...w.fake.state.page, generated: { by: "curator", model: "m", at: "2026-11-18T10:00:00Z" }, sources: [{ item: "i1", source: "gmail", source_id: "t-9", version: 2 }] };
+    const html = await (await w.http.get(`/app/pages/${PAGE_ID}`, ASSERT.reader)).text();
+    expect(shown(html)).toMatch(/Last change/);
+    expect(shown(html)).toMatch(/by Reader/);
+    expect(shown(html)).toMatch(/gmail t-9 \(version 2\)/);
+    expect(html).toContain(`href="/app/pages/${PAGE_ID}/history"`);
+  });
+
+  it("links straight to the diff of the version before the current one", () => {
+    const out = lastChangeHtml(
+      { id: PAGE_ID, updated_at: "2026-11-20T10:00:00Z", sources: [] },
+      [
+        { id: "h-now", saved_by: "Curator", saved_at: "2026-11-20T10:00:00Z" },
+        { id: "h-before", saved_by: "Ann", saved_at: "2026-11-19T10:00:00Z" },
+      ],
+    );
+    expect(out).toContain('href="/app/history/h-before"');
+    expect(out).toContain("by Curator");
+  });
+});
+
 describe("one page", () => {
   it("shows properties typed, the body rendered, and links", async () => {
     const w = world();
@@ -218,6 +242,15 @@ describe("one page", () => {
 });
 
 describe("Indexing (administrators)", () => {
+  it("lists uncertain decisions with the item and the three proposals", async () => {
+    const w = world();
+    const html = await (await w.http.get("/setup/indexing", ASSERT.owner)).text();
+    expect(html).toContain("Uncertain decisions");
+    expect(html).toContain("Mail from &lt;Acme&gt;");
+    expect(html).toContain("&quot;lead&quot; · &quot;proposal&quot; · &quot;won&quot;");
+    expect(html).toContain("deepseek-v4.1-flash");
+  });
+
   it("shows status, settings and actions", async () => {
     const w = world();
     const html = await (await w.http.get("/setup/indexing", ASSERT.owner)).text();

@@ -7,6 +7,7 @@ description: The eight drawers in every template.
 drawers:
   - id: people
     label: People
+    icon: user
     key_rule:
       kind: email
       text: The person's main email address, lower case.
@@ -23,12 +24,15 @@ drawers:
     update_rules:
       auto: [organisation, role, last_contact, next_step, next_date]
       needs_yes: []
+    curator:
+      links_to: [organisations, projects, deals]
     list_views:
       - { name: recent_contact, sort: last_contact, desc: true }
       - { name: follow_up, sort: next_date, desc: false }
 
   - id: organisations
     label: Organisations
+    icon: building
     key_rule:
       kind: domain
       text: The organisation's web domain, lower case, without www.
@@ -45,11 +49,14 @@ drawers:
     update_rules:
       auto: [role, stage, last_contact, next_step, next_date]
       needs_yes: []
+    curator:
+      links_to: [people]
     list_views:
       - { name: by_role, filter: role, sort: last_contact, desc: true }
 
   - id: projects
     label: Projects
+    icon: briefcase
     key_rule:
       kind: slug
       text: "project: followed by a short lower-case name, e.g. project:website-rebuild."
@@ -65,14 +72,18 @@ drawers:
     update_rules:
       auto: [organisation, status, start_date, due_date, next_step]
       needs_yes: []
+    curator:
+      links_to: [organisations, people]
     list_views:
       - { name: active, filter: status, sort: due_date, desc: false }
 
   - id: meetings
     label: Meetings
+    icon: calendar
     key_rule:
       kind: source_id
       text: "meeting: followed by the meeting id from its source, e.g. meeting:01abc."
+      sources: [fireflies, meetings, meeting, calendar, zoom, teams]
     fields:
       - { name: date, kind: date }
       - { name: organisation, kind: key }
@@ -83,11 +94,14 @@ drawers:
     update_rules:
       auto: [date, organisation, project]
       needs_yes: []
+    curator:
+      links_to: [organisations, projects]
     list_views:
       - { name: recent, sort: date, desc: true }
 
   - id: decisions
     label: Decisions
+    icon: scale
     key_rule:
       kind: slug
       text: "decision: followed by a short lower-case name."
@@ -106,6 +120,7 @@ drawers:
 
   - id: concepts
     label: Concepts
+    icon: bulb
     key_rule:
       kind: slug
       text: "concept: followed by a short lower-case name."
@@ -120,6 +135,7 @@ drawers:
 
   - id: research
     label: Research
+    icon: search
     key_rule:
       kind: slug
       text: "research: followed by a short lower-case name."
@@ -136,6 +152,7 @@ drawers:
 
   - id: playbooks
     label: Playbooks
+    icon: book
     key_rule:
       kind: slug
       text: "playbook: followed by a short lower-case name."

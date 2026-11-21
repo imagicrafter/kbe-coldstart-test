@@ -6,6 +6,7 @@ description: Economic development and member groups. Adds Deals (prospects) and 
 drawers:
   - id: deals
     label: Deals
+    icon: dollar
     key_rule:
       kind: slug
       text: "deal: followed by the prospect's domain and a short name."
@@ -19,14 +20,25 @@ drawers:
     sections: [Summary, Need, Incentives, Timeline, Notes]
     signals:
       - A prospect looking at a location, expansion or membership
+      - The item names money (a budget, price, fee or value) or asks for a price, a proposal, a quote or a scope of work
     update_rules:
       auto: [organisation, stage, value, next_step, next_date, last_contact]
       needs_yes: []
+    curator:
+      links_to: [organisations, people, projects]
+      required_when:
+        - '\$\s?\d'
+        - '\b\d[\d,.]*\s?(k|usd|dollars|eur|euros|gbp|pounds)\b'
+        - '\b(budget|price|pricing|fee|fees|quote|quotation|proposal|sow|scope of work)\b'
+      notes:
+        - Set "value" and "stage" on a new deal page when the item states them
+        - A project page does not replace the deal page; make both when both apply
     list_views:
       - { name: pipeline, filter: stage, sort: next_date, desc: false }
 
   - id: programs
     label: Programs
+    icon: collection
     key_rule:
       kind: slug
       text: "program: followed by a short lower-case name."

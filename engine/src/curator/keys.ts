@@ -1,3 +1,5 @@
+import { entitySchema, keyPrefix, type DrawerDef } from "../entities/templates.js";
+
 /**
  * Entity keys an item names, for matching by key before any search:
  * email addresses, web domains (from those addresses) and a meeting id.
@@ -19,7 +21,6 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
   "gmx.com", "zoho.com", "fastmail.com",
 ]);
 
-const MEETING_SOURCES: ReadonlySet<string> = new Set(["fireflies", "meetings", "meeting", "calendar", "zoom", "teams"]);
 
 export type KeyItem = {
   readonly source: string;
@@ -52,17 +53,37 @@ export function domainOf(email: string): string {
   return (email.split("@")[1] ?? "").replace(/^www\./, "");
 }
 
-/** Meeting key for a meeting-like item, else null. */
-export function meetingKey(item: Pick<KeyItem, "source" | "source_id" | "metadata">): string | null {
-  const metaId = item.metadata["meeting_id"];
-  const id = typeof metaId === "string" && metaId.trim() !== "" ? metaId : MEETING_SOURCES.has(item.source) ? item.source_id : null;
-  if (!id) return null;
-  const clean = id.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 190);
-  return clean ? `meeting:${clean}` : null;
+export type SourceKeyRule = { readonly prefix: string; readonly sources: readonly string[] };
+
+/** From the templates: each source_id drawer's key prefix and the sources that carry it. */
+export function sourceKeyRules(drawers: readonly DrawerDef[]): SourceKeyRule[] {
+  return drawers.flatMap((d) => {
+    const prefix = keyPrefix(d);
+    return d.key_rule.kind === "source_id" && prefix ? [{ prefix, sources: d.key_rule.sources ?? [] }] : [];
+  });
+}
+
+const DEFAULT_RULES = sourceKeyRules(entitySchema([]).drawers);
+
+type SourceItem = Pick<KeyItem, "source" | "source_id" | "metadata">;
+
+/** "<prefix>:<id>" keys for an item: from metadata.<prefix>_id, or its own id when its source carries that key. */
+export function sourceKeys(item: SourceItem, rules: readonly SourceKeyRule[] = DEFAULT_RULES): string[] {
+  return rules.flatMap((r) => {
+    const metaId = item.metadata[`${r.prefix}_id`];
+    const id = typeof metaId === "string" && metaId.trim() !== "" ? metaId : r.sources.includes(item.source) ? item.source_id : null;
+    const clean = id ? id.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 190) : "";
+    return clean ? [`${r.prefix}:${clean}`] : [];
+  });
+}
+
+/** Meeting key for a meeting-like item (the base template's rule), else null. */
+export function meetingKey(item: SourceItem): string | null {
+  return sourceKeys(item)[0] ?? null;
 }
 
 /** The keys this item names, most specific first, at most MAX_KEYS. */
-export function itemKeys(item: KeyItem): readonly string[] {
+export function itemKeys(item: KeyItem, rules: readonly SourceKeyRule[] = DEFAULT_RULES): readonly string[] {
   const owner = item.owner_email?.toLowerCase() ?? null;
   const ownerDomain = owner ? domainOf(owner) : null;
   const emails = [...emailsIn(stringsIn(item.metadata).join(" ")), ...emailsIn(headerText(item.body))].filter(
@@ -71,7 +92,6 @@ export function itemKeys(item: KeyItem): readonly string[] {
   const domains = emails
     .map(domainOf)
     .filter((d) => d !== "" && d !== ownerDomain && !FREE_MAIL_DOMAINS.has(d));
-  const meeting = meetingKey(item);
-  const all = [...(meeting ? [meeting] : []), ...emails, ...domains];
+  const all = [...sourceKeys(item, rules), ...emails, ...domains];
   return [...new Set(all)].slice(0, MAX_KEYS);
 }

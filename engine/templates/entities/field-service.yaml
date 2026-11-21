@@ -6,6 +6,7 @@ description: Route and job businesses. Adds Sites and Vendors.
 drawers:
   - id: sites
     label: Sites
+    icon: pin
     key_rule:
       kind: slug
       text: "site: followed by the street address in lower case with dashes, e.g. site:12-main-st-springfield."
@@ -26,6 +27,7 @@ drawers:
 
   - id: vendors
     label: Vendors
+    icon: truck
     key_rule:
       kind: domain
       text: The vendor's web domain, lower case, without www.

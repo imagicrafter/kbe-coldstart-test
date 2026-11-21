@@ -61,11 +61,20 @@ ${statRow("Last backup", backup["last_finished_at"] ? `${esc(when(backup["last_f
 ${cur["has_engine_url"] === true ? postForm("/setup/timer", timerCsrf, hidden("enabled", on ? "no" : "yes"), on ? "Turn the curator off" : "Turn the curator on") : ""}
 <p>Wake gap: ${esc(WAKE_GAP)}</p>
 <p>Model key: ${s["has_model_key"] === true ? "set" : "<strong>not set</strong>"} · <a href="/setup/model">Change the model key</a></p>`);
+  const consensus = cur["consensus"] === false
+    ? "<p>Consensus: off (one run per item)</p>"
+    : `<p>Consensus: on · two runs of ${esc(cur["model"] ?? "")}, tiebreak ${esc(cur["tiebreak_model"] ?? "")}</p>`;
+  const unsure = Array.isArray(s["uncertain"]) ? (s["uncertain"] as Array<Record<string, unknown>>) : [];
+  const unsureRows = unsure
+    .map((u) => `<tr><td>${esc(when(u["created_at"]))}</td><td>${esc(u["item_title"] ?? "(no title)")} <span class="hint">${esc(u["source"])}</span></td><td><code>${esc(u["decision"])}</code></td><td>${esc((Array.isArray(u["proposals"]) ? u["proposals"] : []).map(String).join(" · "))}</td></tr>`)
+    .join("");
+  const uncertainCard = card(`<h2>Uncertain decisions</h2>${consensus}
+${unsure.length ? `<table><thead><tr><th>When</th><th>Item</th><th>Decision</th><th>Three proposals</th></tr></thead><tbody>${unsureRows}</tbody></table>` : "<p>None. When the three runs all disagree on a decision, it is left out and listed here.</p>"}`);
   const csrf = deps.csrf.token(me.email, "indexing");
   const actions = card(`<h2>Actions</h2>
 ${postForm("/setup/indexing/rerun", csrf, "", "Re-run pending summaries")}
 <p class="hint">Queues every page still waiting for a summary again and wakes the curator. To re-index one page, use Re-index on that page.</p>`);
-  return page(c, "/setup/indexing", "Indexing", banner + status + settings + actions);
+  return page(c, "/setup/indexing", "Indexing", banner + status + settings + uncertainCard + actions);
 };
 
 const rerun: Handler = async (c, me, deps) => {

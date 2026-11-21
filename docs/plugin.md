@@ -55,7 +55,7 @@ The repository must be reachable by the person's Claude (it is public).
 /plugin install kb-engine@kb-engine
 ```
 
-Claude Code asks for **Your Knowledge Base Engine address (ends in /mcp)** when the plugin is enabled.
+Claude Code asks for **Your Quantabase address (ends in /mcp)** when the plugin is enabled.
 Paste the address from your Engine's setup page (it ends in `/mcp`). To
 change it later: `/plugin`, open **kb-engine**, and edit the option. Then
 sign in to the Engine when the connector asks.

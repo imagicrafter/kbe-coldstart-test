@@ -56,7 +56,7 @@ describe("MCP instructions", () => {
 
   it("still describes the tools when no config has been applied", () => {
     const text = buildInstructions(null);
-    expect(text).toContain("the knowledge base of this Knowledge Base Engine");
+    expect(text).toContain("the knowledge base of this Quantabase");
     expect(text).toContain("**search(query");
     expect(text).toContain("Topics are set by the Engine's owner.");
   });

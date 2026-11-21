@@ -43,8 +43,16 @@ const Drawer = z
     id: z.string().regex(/^[a-z][a-z0-9-]*$/),
     label: z.string().min(1),
     key_rule: z
-      .object({ kind: z.enum(["email", "domain", "slug", "source_id"]), text: z.string().min(1) })
+      .object({
+        kind: z.enum(["email", "domain", "slug", "source_id"]),
+        text: z.string().min(1),
+        // source_id keys only: the sources whose items carry this key
+        // ("<prefix>:<the item's source id>"), e.g. [fireflies, calendar].
+        sources: z.array(Slug).optional(),
+      })
       .strict(),
+    // The app's icon for this drawer (a name from engine/src/app/icons.ts).
+    icon: Slug.optional(),
     fields: z.array(Field),
     sections: z.array(z.string().min(1)),
     signals: z.array(z.string().min(1)),
@@ -54,7 +62,30 @@ const Drawer = z
     default_topic: z.string().nullable().optional(),
     // How the curator treats a NEW page in this drawer: made on its own
     // ("auto", the default) or held for a person's yes ("needs_yes").
-    curator: z.object({ new_page: z.enum(["auto", "needs_yes"]) }).strict().optional(),
+    // links_to: drawers this drawer's pages link to ("related") when one item
+    // names both. notes: extra one-line rules for the curator about this drawer.
+    curator: z
+      .object({
+        new_page: z.enum(["auto", "needs_yes"]).optional(),
+        links_to: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).optional(),
+        notes: z.array(z.string().min(1)).optional(),
+        // Case-insensitive regular expressions on the item's text: a match
+        // means the reply must make or update a page in this drawer.
+        required_when: z
+          .array(
+            z.string().min(1).max(300).refine((s) => {
+              try {
+                new RegExp(s, "i");
+                return true;
+              } catch {
+                return false;
+              }
+            }, "required_when must be a valid regular expression"),
+          )
+          .optional(),
+      })
+      .strict()
+      .optional(),
     list_views: z.array(ListView),
   })
   .strict();

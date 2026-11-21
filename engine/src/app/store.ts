@@ -68,7 +68,10 @@ export type AppStore = {
   readonly templates: () => Promise<string[]>;
   readonly setTemplates: (email: string, names: readonly string[]) => Promise<string[]>;
   readonly topics: (email: string) => Promise<Row[]>;
-  readonly addTopic: (email: string, topic: string, label: string, sensitive: boolean) => Promise<boolean>;
+  /** The caller's own source tags (0060): labels, folders, channels found at ingest. */
+  readonly sourceTags: (email: string) => Promise<Row[]>;
+  /** Switch one of the caller's tags; confirm false only previews. */
+  readonly setSourceTag: (email: string, id: string, enabled: boolean, confirm: boolean) => Promise<Row>;
   readonly people: (email: string) => Promise<Row[]>;
   /** An admin change in two steps (0033): no code previews, a code applies. */
   readonly twoStep: (email: string, spec: TwoStepSpec) => Promise<TwoStepResult>;
@@ -157,8 +160,9 @@ export const liveStore: AppStore = {
     return Array.isArray(data) ? data.map(String) : [];
   },
   topics: async (email) => list(await rpc("app_topics_list", { p_email: email })),
-  addTopic: async (email, topic, label, sensitive) =>
-    (await rpc("app_topic_add", { p_email: email, p_topic: topic, p_label: label, p_sensitive: sensitive })) === true,
+  sourceTags: async (email) => list(await rpc("app_source_tags_list", { p_email: email })),
+  setSourceTag: async (email, id, enabled, confirm) =>
+    obj(await rpc("app_source_tag_set", { p_email: email, p_id: id, p_enabled: enabled, p_confirm: confirm })) ?? {},
   people: async (email) => list(await rpc("admin_people_list", { p_email: email })),
   twoStep: (email, spec) => runTwoStep(spec, email),
   setModelKey: async (email, value) => {

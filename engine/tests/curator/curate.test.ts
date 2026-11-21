@@ -22,7 +22,7 @@ describe("curateItem: small changes apply", () => {
     const model = modelSaying(bullet(PILOT.key, "2026-11-19: map pack installed on all six tablets, so launch moves to 2026-11-30.", { next_step: "Launch 2026-11-30" }));
     const r = await curateItem(item(), deps(model, f.store));
 
-    expect(r).toEqual({ outcome: "applied", pages: [`page-${PILOT.key}`], queued: 0 });
+    expect(r).toMatchObject({ outcome: "applied", pages: [`page-${PILOT.key}`], queued: 0, consensus: "single" });
     expect(f.saves).toHaveLength(1);
     const saved = f.saves[0]!;
     expect(saved.hash).toBe(PILOT.content_hash);

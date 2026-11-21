@@ -7,7 +7,7 @@ import { appLayout, esc, hidden, sendMessage, sendPage, when } from "./html.js";
 import { drawerIcon, icon } from "./icons.js";
 import { chosenDrawers, DRAWER_ID } from "./knowledge.js";
 import { renderMarkdown } from "./markdown.js";
-import { editFormHtml, linksPanelHtml, pageViewHtml, propertiesHtml } from "./page-view.js";
+import { editFormHtml, lastChangeHtml, linksPanelHtml, pageViewHtml, propertiesHtml } from "./page-view.js";
 import type { DrawerQuery, Row } from "./store.js";
 
 /**
@@ -197,10 +197,11 @@ export const knowledgeDrawer: Handler = async (c, me, deps) => {
     listOpen: c.req.query("list") !== "closed",
     viewOpen: c.req.query("view") !== "closed",
   };
-  const [result, page, links] = await Promise.all([
+  const [result, page, links, history] = await Promise.all([
     deps.store.drawerPages(me.email, parsed),
     v.open ? deps.store.pageView(me.email, v.open) : Promise.resolve(null),
     v.open ? deps.store.pageLinks(me.email, v.open) : Promise.resolve(null),
+    v.open ? deps.store.history(me.email, v.open).catch(() => []) : Promise.resolve([]),
   ]);
   if (!def && Number(result["total"] ?? 0) === 0) return sendMessage(c, "app", 404, "Not found", "There is no such drawer.");
   const label = def?.label ?? id;
@@ -213,7 +214,7 @@ export const knowledgeDrawer: Handler = async (c, me, deps) => {
     const tabs = `<nav class="tabs"><a href="${esc(drawerHref(v, { mode: null }))}"${v.edit ? "" : ' aria-current="page"'}>Preview</a><a href="${esc(drawerHref(v, { mode: "edit" }))}"${v.edit ? ' aria-current="page"' : ""}>Edit</a><a href="/app/pages/${esc(page["id"])}">Open alone</a></nav>`;
     viewer = v.edit
       ? tabs + editFormHtml(page, def, deps.csrf.token(me.email, `page:${str(page["id"])}`))
-      : `${tabs}${propertiesHtml(page, def)}<article class="markdown">${renderMarkdown(str(page["body"]))}</article>${linksPanelHtml(links)}`;
+      : `${tabs}${lastChangeHtml(page, history)}${propertiesHtml(page, def)}<article class="markdown">${renderMarkdown(str(page["body"]))}</article>${linksPanelHtml(links)}`;
   }
   const back = drawerHref(v);
   const actions = page ? pageActions(me, deps, page, back) : null;
@@ -231,10 +232,14 @@ ${pane("view-pane", viewTitle, v.viewOpen, drawerHref(v, { view: v.viewOpen ? "c
 export const pageAlone: Handler = async (c, me, deps) => {
   const id = c.req.param("id") ?? "";
   if (!UUID.test(id)) return sendMessage(c, "app", 404, "Not found", "There is no such page.");
-  const [p, links] = await Promise.all([deps.store.pageView(me.email, id), deps.store.pageLinks(me.email, id)]);
+  const [p, links, history] = await Promise.all([
+    deps.store.pageView(me.email, id),
+    deps.store.pageLinks(me.email, id),
+    deps.store.history(me.email, id).catch(() => []),
+  ]);
   if (!p) return sendMessage(c, "app", 404, "Not found", "You have no such page.");
   const { def } = await drawerFor(deps, str(p["drawer"]));
-  return show(c, `/app/pages/${id}`, str(p["title"]), pageViewHtml(p, def, links, pageActions(me, deps, p, `/app/pages/${id}`)));
+  return show(c, `/app/pages/${id}`, str(p["title"]), pageViewHtml(p, def, links, pageActions(me, deps, p, `/app/pages/${id}`), history));
 };
 
 export const pageEdit: Handler = async (c, me, deps) => {

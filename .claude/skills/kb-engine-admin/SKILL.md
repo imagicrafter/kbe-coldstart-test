@@ -123,10 +123,17 @@ confirmation. `admin_list_issues` shows the open issues; it changes nothing.
 
 ## Topics
 
-Topics live in the config file, `.kb-engine/engine.yaml` in the knowledge
-repository, under `domains:`.
+A topic is never typed in. For items fed by the plugin, topics come from tags
+in the owner's own sources: the owner opens **Settings > Topics and people**,
+finds the Gmail label, Drive folder or Fireflies channel under **Found in your
+sources**, and turns it into a topic (a preview, then a yes). Only the tag's
+owner can switch it; you never switch it for them. See `docs/source-tags.md`.
 
-### Add a topic
+Topics declared in the config file (`.kb-engine/engine.yaml`, `domains:`)
+remain only for the older wiki, Drive and Fireflies pullers and for migrating
+an existing Engine.
+
+### Add a topic for the pullers or a migration (config file)
 
 1. Edit the file in the local clone. Add one line under `domains:`:
 

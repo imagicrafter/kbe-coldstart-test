@@ -39,7 +39,7 @@ current pricing.
 Have answers ready. (The guided setup asks a few more, such as the
 DigitalOcean region and how your name is written in meeting notes.)
 
-1. A short id and a display name for the Engine (`acme`, "Acme's Knowledge Base Engine").
+1. A short id and a display name for the Engine (`acme`, "Acme's Quantabase").
 2. The owner's email. It cannot be changed later.
 3. Your topics, and which are sensitive. A sensitive topic cannot be
    unlocked later.

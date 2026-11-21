@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { entitySchema } from "../../src/entities/templates.js";
 import { checkReply, extractJsonObject, fieldProblem, keyProblem } from "../../src/curator/output.js";
 import { LARGE_REMOVAL_SHARE, judgeNewPage, judgeUpdate, removal } from "../../src/curator/policy.js";
-import { itemKeys, meetingKey } from "../../src/curator/keys.js";
+import { itemKeys, meetingKey, sourceKeyRules, sourceKeys } from "../../src/curator/keys.js";
 import { ALL_PAGES, INVOICES, OVENS, PILOT, item, page } from "./fixtures.js";
 
 const schema = entitySchema(["consulting"]);
@@ -164,5 +164,15 @@ describe("keys an item names", () => {
     expect(meetingKey({ source: "fireflies", source_id: "01ABC", metadata: {} })).toBe("meeting:01abc");
     expect(meetingKey({ source: "gmail", source_id: "t1", metadata: { meeting_id: "M 2" } })).toBe("meeting:m-2");
     expect(meetingKey({ source: "gmail", source_id: "t1", metadata: {} })).toBeNull();
+  });
+
+  it("source-id keys come from the template's key rule, not code", () => {
+    const rules = sourceKeyRules([
+      { ...entitySchema([]).drawers.find((d) => d.id === "meetings")!, id: "calls", key_rule: { kind: "source_id", text: "call: then the id", sources: ["dialpad"] } },
+    ]);
+    expect(rules).toEqual([{ prefix: "call", sources: ["dialpad"] }]);
+    expect(sourceKeys({ source: "dialpad", source_id: "X1", metadata: {} }, rules)).toEqual(["call:x1"]);
+    expect(sourceKeys({ source: "fireflies", source_id: "X1", metadata: {} }, rules)).toEqual([]);
+    expect(sourceKeys({ source: "gmail", source_id: "t", metadata: { call_id: "Z 9" } }, rules)).toEqual(["call:z-9"]);
   });
 });

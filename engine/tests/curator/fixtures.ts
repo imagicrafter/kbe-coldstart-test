@@ -167,6 +167,7 @@ export function fakeStore(pages: readonly PageRow[] = ALL_PAGES) {
   const reviews: Array<Record<string, unknown>> = [];
   const done: Array<{ itemId: string; outcome: string; pages: readonly string[]; error?: string | undefined }> = [];
   const flags: Array<{ itemId: string; reason: string }> = [];
+  const uncertain: Array<{ itemId: string; decision: string; proposals: readonly string[] }> = [];
   const s = {
     settings: vi.fn().mockResolvedValue({
       enabled: true, model: "openai-gpt-oss-120b", templates: ["consulting"], batchSize: 10, hasModelKey: true,
@@ -182,6 +183,9 @@ export function fakeStore(pages: readonly PageRow[] = ALL_PAGES) {
     flag: vi.fn(async (itemId: string, reason: string) => void flags.push({ itemId, reason })),
     done: vi.fn(async (itemId: string, outcome: string, p: readonly string[], error?: string) =>
       void done.push({ itemId, outcome, pages: p, error })),
+    uncertain: vi.fn(async (itemId: string, decision: string, proposals: readonly string[]) =>
+      void uncertain.push({ itemId, decision, proposals })),
+    consensus: vi.fn().mockResolvedValue({ enabled: false, tiebreakModel: "deepseek-v4.1-flash" }),
     candidates: vi.fn(async (_item: string, keys: readonly string[]) => {
       const byKey = pages.filter((p) => keys.includes(p.key));
       return byKey.length > 0 && keys.length === 1 ? byKey : pages;
@@ -199,5 +203,5 @@ export function fakeStore(pages: readonly PageRow[] = ALL_PAGES) {
     summaryQueue: vi.fn().mockResolvedValue([]),
     writeSummary: vi.fn().mockResolvedValue(true),
   };
-  return { store: s as unknown as Store & typeof s, saves, reviews, done, flags };
+  return { store: s as unknown as Store & typeof s, saves, reviews, done, flags, uncertain };
 }

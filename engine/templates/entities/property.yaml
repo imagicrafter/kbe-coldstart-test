@@ -6,6 +6,7 @@ description: Rentals and holdings. Adds Properties and Vendors.
 drawers:
   - id: properties
     label: Properties
+    icon: house
     key_rule:
       kind: slug
       text: "property: followed by the street address in lower case with dashes."
@@ -26,6 +27,7 @@ drawers:
 
   - id: vendors
     label: Vendors
+    icon: truck
     key_rule:
       kind: domain
       text: The vendor's web domain, lower case, without www.

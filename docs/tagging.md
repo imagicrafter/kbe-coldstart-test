@@ -1,5 +1,10 @@
 # Tagging: who can see what
 
+> **Items fed by the plugin** (the `kb-ingest` skill) get their topics from
+> tags you switch on in Quantabase, not from `kx/` names declared in the
+> config: see [source-tags.md](source-tags.md). This page describes the
+> pullers (wiki, Drive, Fireflies jobs) and the config-declared topics they use.
+
 Every document in the Engine has one or more **topics** (called `domains` in
 the config and the database). A person sees a document only if they have been
 granted one of its topics.

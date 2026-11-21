@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { curateItem } from "../../src/curator/curate.js";
 import { checkReply } from "../../src/curator/output.js";
-import { SYSTEM_PROMPT, buildPrompt } from "../../src/curator/prompt.js";
+import { RULES, SYSTEM_PROMPT, buildPrompt } from "../../src/curator/prompt.js";
 import { entitySchema } from "../../src/entities/templates.js";
 import { ALL_PAGES, fakeStore, modelSaying, page } from "./fixtures.js";
 import { NORTHWIND_EMAIL, NORTHWIND_EXPECTED, NORTHWIND_PLAN } from "./northwind.js";
@@ -102,6 +102,22 @@ describe("curator fan-out: the Northwind email", () => {
     const prompt = buildPrompt(NORTHWIND_EMAIL, [], schema, "0123456789abcdef");
     expect(prompt).toMatch(/deals: .*make one when: A request for a price, a proposal or a scope of work/);
     expect(prompt).toMatch(/budget, price, fee or value/i);
+  });
+
+  it("names no drawer in its rules: a schema without deals never mentions deals", () => {
+    const solo = entitySchema(["solo"]);
+    const prompt = buildPrompt(NORTHWIND_EMAIL, [], solo, "0123456789abcdef");
+    const before = prompt.split("<<<SOURCE_TEXT id=0123456789abcdef>>>")[0]!;
+    expect(before).not.toMatch(/\bdeals?\b/i);
+    expect(RULES).not.toMatch(/\b(deals?|people|organisations|projects|meetings)\b/i);
+  });
+
+  it("links come from each drawer's links_to in the template", () => {
+    const prompt = buildPrompt(NORTHWIND_EMAIL, [], schema, "0123456789abcdef");
+    expect(prompt).toMatch(/- deals: .*link to: organisations, people/);
+    expect(prompt).toMatch(/- people: .*link to: organisations, projects, deals/);
+    const solo = buildPrompt(NORTHWIND_EMAIL, [], entitySchema(["solo"]), "0123456789abcdef");
+    expect(solo).toMatch(/- people: .*link to: organisations, projects;/);
   });
 
   it("tells the model to write from the owner's point of view, naming who did what", () => {

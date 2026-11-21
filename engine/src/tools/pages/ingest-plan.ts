@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolSpec } from "../../mcp/tool-helpers.js";
+import { providerFor } from "../../sources/index.js";
 import { pageRpc, rowsOf } from "./rpc.js";
 
 /**
@@ -94,7 +95,9 @@ export const getIngestPlanTool: ToolSpec = {
       max_items: MAX_ITEMS,
       record_with: "record_source_item",
       cursor_rule: "Pass cursor = the item's source_created_at (date and time). Hand items over oldest first.",
-      scope: scopeFor(source, since),
+      tags_rule:
+        "Pass each item's tags exactly as scope.tags says, unchanged. Never pass topics: the Engine files an item under a topic only when its owner switched that tag on.",
+      scope: { ...scopeFor(source, since), tags: providerFor(source)?.howToRead ?? "This source has no tags. Do not pass tags." },
     };
   },
 };

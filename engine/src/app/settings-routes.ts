@@ -11,6 +11,7 @@ import { AppMissingFunctionError, type Row } from "./store.js";
 import { roleLabel, setChrome } from "./chrome.js";
 import { adminMigrationState, updateBanner, type DatabaseDeps } from "./db-update.js";
 import { sessionSentence } from "../setup/inputs.js";
+import { setSourceTag, sourceTagsCard } from "./source-tags.js";
 
 /**
  * The setup screens that come after sign-in, for administrators only (the
@@ -88,7 +89,11 @@ const yes = (v: unknown) => (v === true ? "yes" : "no");
 const ROLES = ["reader", "reviewer", "administrator"] as const;
 
 const people: Handler = async (c, me, deps) => {
-  const [topics, persons] = await Promise.all([deps.store.topics(me.email), deps.store.people(me.email)]);
+  const [topics, persons, tags] = await Promise.all([
+    deps.store.topics(me.email),
+    deps.store.people(me.email),
+    deps.store.sourceTags(me.email),
+  ]);
   const csrf = deps.csrf.token(me.email, "people");
   const topicRows = topics
     .map((t) => `<tr><td>${esc(t["topic"])}</td><td>${esc(t["label"])}</td><td>${t["sensitive"] ? "sensitive" : ""}</td><td>${esc(t["people"])}</td></tr>`)
@@ -98,9 +103,8 @@ const people: Handler = async (c, me, deps) => {
     .join("");
   const body =
     card(`<h2>Topics</h2><table><thead><tr><th>Topic</th><th>Label</th><th></th><th>People</th></tr></thead><tbody>${topicRows}</tbody></table>
-${postForm("/setup/people/topic", csrf, `<label for="topic">New topic</label><input type="text" id="topic" name="topic" maxlength="40" required pattern="[a-z][a-z0-9-]*">
-<label for="label">Label</label><input type="text" id="label" name="label" maxlength="80" required>
-<label><input type="checkbox" name="sensitive" value="yes"> Sensitive (only ever granted one person at a time, on purpose)</label>`, "Add topic")}`) +
+<p class="hint">A topic is made from a tag in your sources, below. There is no way to type one in.</p>`) +
+    sourceTagsCard(tags, csrf) +
     card(`<h2>People</h2><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th><th>Topics</th></tr></thead><tbody>${personRows}</tbody></table>`) +
     card(`<h2>Add a person</h2>${postForm("/setup/people/change", csrf, `${hidden("action", "add")}
 <label for="email">Email</label><input type="email" id="email" name="email" required maxlength="254">
@@ -114,18 +118,8 @@ ${postForm("/setup/people/topic", csrf, `<label for="topic">New topic</label><in
   return page(c, "/setup/people", "Topics and people", body);
 };
 
-const addTopic: Handler = async (c, me, deps) => {
-  const sent = await readForm(c, deps, "setup", me.email, "people");
-  if (!sent.ok) return sent.response;
-  const topic = (sent.form["topic"] ?? "").trim().toLowerCase();
-  const label = (sent.form["label"] ?? "").trim();
-  if (!/^[a-z][a-z0-9-]{0,39}$/.test(topic) || label.length < 1 || label.length > 80) {
-    return page(c, "/setup/people", "Not added", notice("error", "A topic is 1 to 40 lower-case letters, digits or dashes; a label is 1 to 80 characters."), 400);
-  }
-  const added = await deps.store.addTopic(me.email, topic, label, sent.form["sensitive"] === "yes");
-  logger.info({ topic, added }, "app: topic add");
-  return sendMessage(c, "setup", 200, added ? "Topic added" : "Already there", added ? `${topic} was added. Give it to people below.` : `${topic} already exists; nothing changed.`);
-};
+const sourceTag: Handler = (c, me, deps) =>
+  setSourceTag(c, me, deps, (body, status = 200) => page(c, "/setup/people", "Topics and people", body, status));
 
 type Change = { readonly fn: string; readonly args: Readonly<Record<string, string | boolean>> };
 
@@ -332,7 +326,7 @@ const health: Handler = async (c, me, deps) => {
 export function makeSettingsRoutes(use: () => SettingsDeps): Hono {
   const app = new Hono();
   app.get("/people", admin(use, people));
-  app.post("/people/topic", admin(use, addTopic));
+  app.post("/people/source-tag", admin(use, sourceTag));
   app.post("/people/change", admin(use, change));
   app.get("/template", admin(use, template));
   app.post("/template", admin(use, saveTemplate));

@@ -91,7 +91,17 @@ describe("get_ingest_plan", () => {
       expect(typeof scope["list"]).toBe("string");
       expect(typeof scope["source_id"]).toBe("string");
       expect(typeof scope["body"]).toBe("string");
+      // How to pass the item's labels, folders or channels comes from the provider.
+      expect(typeof scope["tags"]).toBe("string");
     }
+  });
+
+  it("tells the run to pass tags unchanged and never topics", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const out = (await plan().run({ source: "gmail" }, CTX)) as Record<string, unknown>;
+    const scope = out["scope"] as Record<string, unknown>;
+    expect(String(scope["tags"])).toMatch(/label/);
+    expect(String(out["tags_rule"])).toMatch(/never pass topics/i);
   });
 
   it("gmail scope carries a ready search query built from since", async () => {
