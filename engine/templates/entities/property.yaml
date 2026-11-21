@@ -19,9 +19,8 @@ drawers:
     signals:
       - A street address with leases, rent, repairs or tenants
     update_rules:
-      auto: [next_step]
-      needs_yes: [kind, units, occupancy, next_lease_end]
-    curator: { new_page: needs_yes }
+      auto: [kind, units, occupancy, next_lease_end, next_step]
+      needs_yes: []
     list_views:
       - { name: lease_ends, sort: next_lease_end, desc: false }
 
@@ -37,7 +36,7 @@ drawers:
     signals:
       - Invoices, quotes or orders from a supplier
     update_rules:
-      auto: [last_order]
-      needs_yes: [supplies]
+      auto: [supplies, last_order]
+      needs_yes: []
     list_views:
       - { name: recent, sort: last_order, desc: true }

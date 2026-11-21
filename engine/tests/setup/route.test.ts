@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { describe, it, expect } from "vitest";
 import { SETUP_CSP } from "../../src/setup/page.js";
 import { GOOD_TOKEN } from "./fake-cloudflare.js";
@@ -72,7 +73,7 @@ describe("GET /setup in setup mode", () => {
     expect(html).not.toContain('name="owner_email"');
     expect(html).toMatch(/owner named in your Engine config/);
     // After the code, the preview names the owner.
-    expect((await previewed(world)).html).toContain("owner@example.com");
+    expect(shown((await previewed(world)).html)).toContain("owner@example.com");
   });
 
   it("asks for the owner email when no config has been applied", async () => {
@@ -163,7 +164,7 @@ describe("POST /setup/preview", () => {
     const world = createWorld();
     const { html, inputs, sig } = await previewed(world);
     expect(html).toContain("CNAME engine.example.com -&gt; " + PLATFORM_HOST);
-    expect(html).toContain("owner@example.com, amy@example.com");
+    expect(shown(html)).toContain("owner@example.com, amy@example.com");
     expect(html).toContain("Managed OAuth");
     expect(html).toContain("https://claude.ai/api/mcp/auth_callback");
     expect(html).toContain("engine.example.com/status");
@@ -227,7 +228,7 @@ describe("POST /setup/preview", () => {
     // An invalid value is not given back at all; the valid ones are.
     expect(html).not.toContain("script&gt;");
     expect(html).toContain(PLATFORM_HOST);
-    expect(html).toContain("amy@example.com");
+    expect(shown(html)).toContain("amy@example.com");
     expect(html).not.toContain(CODE);
     expect(html).not.toContain('name="inputs"');
   });

@@ -20,9 +20,8 @@ drawers:
     signals:
       - A request for a price, a proposal or a scope of work
     update_rules:
-      auto: [next_step, next_date, last_contact]
-      needs_yes: [stage, value, organisation]
-    curator: { new_page: needs_yes }
+      auto: [organisation, stage, value, next_step, next_date, last_contact]
+      needs_yes: []
     list_views:
       - { name: pipeline, filter: stage, sort: next_date, desc: false }
       - { name: by_value, sort: value, desc: true }
@@ -39,8 +38,7 @@ drawers:
     signals:
       - A packaged service described the same way to more than one client
     update_rules:
-      auto: []
-      needs_yes: [price, status]
-    curator: { new_page: needs_yes }
+      auto: [price, status]
+      needs_yes: []
     list_views:
       - { name: active, filter: status }

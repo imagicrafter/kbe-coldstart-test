@@ -1,4 +1,5 @@
 import type { DashboardModel } from "./model.js";
+import { guardEmails } from "../app/email-guard.js";
 
 /**
  * HTML shell for the dashboard. The page itself carries no script and no
@@ -36,7 +37,7 @@ export function renderPage(
   email: string,
 ): string {
   const v = encodeURIComponent(version);
-  return `<!doctype html>
+  return guardEmails(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -73,5 +74,5 @@ export function renderPage(
 <script src="/status/assets/dashboard.js?v=${v}" defer></script>
 </body>
 </html>
-`;
+`);
 }

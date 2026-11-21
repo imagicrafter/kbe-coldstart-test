@@ -62,26 +62,37 @@ describe("curateItem: small changes apply", () => {
   });
 });
 
-describe("curateItem: large changes wait for a yes", () => {
-  it("queues a stage change whole, with the hash it was based on", async () => {
+describe("curateItem: applies by default, waits only in extreme cases", () => {
+  it("applies a stage change; it stays undoable from the page history", async () => {
     const f = fakeStore();
+    const model = modelSaying(bullet(OVENS.key, "2026-11-19: Priya said they will sign.", { stage: "won" }));
+    const r = await curateItem(item(), deps(model, f.store));
+    expect(r.outcome).toBe("applied");
+    expect(f.reviews).toHaveLength(0);
+    expect(f.saves[0]!.page["fields"]).toMatchObject({ stage: "won" });
+    expect(f.saves[0]!.hash).toBe(OVENS.content_hash);
+  });
+
+  it("queues a stage change whole when a person set the stage by hand", async () => {
+    const handSet = page({ ...OVENS, verified: [{ field: "stage", value: "proposal", by: "person", at: "2026-11-01T00:00:00Z" }] });
+    const f = fakeStore([PILOT, handSet]);
     const model = modelSaying(bullet(OVENS.key, "2026-11-19: Priya said they will sign.", { stage: "won" }));
     const r = await curateItem(item(), deps(model, f.store));
     expect(r.outcome).toBe("queued");
     expect(f.saves).toHaveLength(0);
-    expect(f.reviews[0]).toMatchObject({ kind: "update", pageKey: OVENS.key, pageId: OVENS.id, baseHash: OVENS.content_hash, reasons: ["stage change needs a yes"] });
+    expect(f.reviews[0]).toMatchObject({ kind: "update", pageKey: OVENS.key, pageId: OVENS.id, baseHash: OVENS.content_hash, reasons: ["stage was set by hand"] });
   });
 
-  it("queues a new deal and applies the small update beside it (mixed)", async () => {
+  it("applies a new deal beside the small update", async () => {
     const f = fakeStore();
     const model = modelSaying({
       ...bullet(PILOT.key, "2026-11-19: launch moves to 2026-11-30 because the tablets are ready."),
       new_pages: [{ drawer: "deals", key: "deal:northwind.example.com-phase-2", title: "Northwind phase 2", sections: [], fields: { stage: "lead" } }],
     });
     const r = await curateItem(item(), deps(model, f.store));
-    expect(r.outcome).toBe("mixed");
-    expect(f.saves.map((s) => s.page["key"])).toEqual([PILOT.key]);
-    expect(f.reviews[0]).toMatchObject({ kind: "new_page", pageKey: "deal:northwind.example.com-phase-2", reasons: ["new page in deals"] });
+    expect(r.outcome).toBe("applied");
+    expect(f.saves.map((s) => s.page["key"])).toEqual([PILOT.key, "deal:northwind.example.com-phase-2"]);
+    expect(f.reviews).toHaveLength(0);
   });
 
   it("queues a new page whose key the owner holds outside the item's topics", async () => {

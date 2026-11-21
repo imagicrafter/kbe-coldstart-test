@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { makeOwnerRoutes, editedPage, reviewDiff } from "../../src/app/owner-routes.js";
@@ -47,7 +48,7 @@ describe("owner screens: who gets in", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const html = await res.text();
     expect(html).not.toMatch(/<script/i);
-    expect(html).toContain(READER);
+    expect(shown(html)).toContain(READER);
   });
 });
 

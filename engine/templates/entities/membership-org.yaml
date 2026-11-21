@@ -20,9 +20,8 @@ drawers:
     signals:
       - A prospect looking at a location, expansion or membership
     update_rules:
-      auto: [next_step, next_date, last_contact]
-      needs_yes: [stage, value, organisation]
-    curator: { new_page: needs_yes }
+      auto: [organisation, stage, value, next_step, next_date, last_contact]
+      needs_yes: []
     list_views:
       - { name: pipeline, filter: stage, sort: next_date, desc: false }
 
@@ -39,8 +38,7 @@ drawers:
     signals:
       - A grant, a member benefit or a recurring program
     update_rules:
-      auto: []
-      needs_yes: [status, funder, next_report]
-    curator: { new_page: needs_yes }
+      auto: [status, funder, next_report]
+      needs_yes: []
     list_views:
       - { name: reports_due, sort: next_report, desc: false }

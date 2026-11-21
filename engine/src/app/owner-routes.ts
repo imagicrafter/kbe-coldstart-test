@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { applyPatches, type Patch } from "../entities/sections.js";
+import { markHandSet } from "../entities/hand-set.js";
 import { logger } from "../log/logger.js";
 import { diffHtml, lineDiff } from "./diff.js";
 import { readForm, requirePerson, storeFailure, UUID, type Allowed, type ScreenDeps } from "./guard.js";
@@ -241,7 +242,9 @@ const savePage: Handler = async (c, me, deps) => {
     if (typeof props === "string") {
       return page(c, "/app/pages", "Not saved", notice("error", props) + card(`<pre>${esc(next["body"])}</pre>`), 400);
     }
-    next = { ...next, ...props };
+    // Fields the person changed are marked hand-set: the curator asks before overwriting them.
+    const verified = markHandSet(Array.isArray(current["verified"]) ? current["verified"] : [], object(current["fields"]), object(props["fields"]), new Date().toISOString());
+    next = { ...next, ...props, verified };
   }
   if (current["content_hash"] !== expected) {
     return page(c, "/app/pages", "Not saved", notice("error", "The page changed since you opened it. Open it again; your text is below so you can copy it.") + card(`<pre>${esc(next["body"])}</pre>`), 409);

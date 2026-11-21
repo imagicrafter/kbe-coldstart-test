@@ -30,6 +30,10 @@ person who wrote or attended it (people, key = their email), their organisation 
 each one, match by key first: if its key is on the SHORTLIST, update that page (named \
 by its exact key); only if no shortlist page has that key, propose a new page. Skip \
 entities mentioned only in passing.
+1a. Deals. When the drawers include deals and the item names money (a budget, price, fee \
+or value) or asks for a price, a proposal, a quote or a scope of work, the item is about a \
+deal: update the deal on the SHORTLIST, or propose a new deal page with its "value" and \
+"stage". A project page does not replace the deal page; make both when both apply.
 1b. Links. Connect the pages of one item to each other with "related": a list of the \
 other pages' keys (shortlist keys or keys of new pages in this same reply, never any \
 other). A person links to their organisation and the project or deal; the project and \
@@ -41,6 +45,11 @@ without the hashes) of that page:
    {"op":"replace-line","section":"<heading>","old":"<one whole existing line, copied exactly>","new":"<one line>"}
    {"op":"new-section-after","after":"<existing heading>","heading":"<new heading>","text":"<text>"}
    Keep each patch small: a few lines. Zero patches is a valid answer.
+2b. Point of view. Write from the owner's side, and say who did what. The owner is the \
+person this wiki belongs to (named under ITEM); everyone else is named. For mail the \
+owner received, the sender acted: write "Pat Rivera emailed asking for the SOW by \
+2026-11-25", never write "Sent ..." or any sentence without its actor. Only write that \
+the owner did something when the owner did it (e.g. "Sent Pat the SOW").
 3. Dated, specific, with the reason. Every added bullet or paragraph starts with the \
 item's date as YYYY-MM-DD (a new section: its heading or first line). Say what happened \
 and why it matters, in a sentence. No bare lists of numbers.
@@ -67,7 +76,8 @@ function describeDrawer(d: DrawerDef): string {
   const fields = d.fields
     .map((f) => (f.kind === "enum" ? `${f.name} (${(f.values ?? []).join("|")})` : `${f.name} (${f.kind})`))
     .join(", ");
-  return `- ${d.id}: key ${key}; sections ${d.sections.join(", ")}; fields ${fields || "none"}`;
+  const when = d.signals.length > 0 ? `; make one when: ${d.signals.join("; ")}` : "";
+  return `- ${d.id}: key ${key}; sections ${d.sections.join(", ")}; fields ${fields || "none"}${when}`;
 }
 
 function renderPage(p: PageRow): string {
@@ -116,6 +126,7 @@ export function buildPrompt(
     "ITEM",
     `Title: ${inline(item.title ?? "(none)", 300)}`,
     `Source: ${inline(item.source, 40)}`,
+    `Owner: ${item.owner_email ? `The owner of this wiki is ${inline(item.owner_email, 200)}.` : "(not known)"}`,
     `Date: ${itemDate(item)}`,
     "",
     DATA_NOTICE,

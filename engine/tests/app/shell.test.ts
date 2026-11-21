@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { app } from "../../src/index.js";
 import { makeOwnerRoutes } from "../../src/app/owner-routes.js";
 import { appLayout } from "../../src/app/html.js";
+import { fillChrome } from "../../src/app/chrome.js";
 import { chosenDrawers, folders, foldersHtml } from "../../src/app/knowledge.js";
 import { drawerIcon } from "../../src/app/icons.js";
 import { layout, infoPage } from "../../src/setup/page.js";
@@ -51,6 +52,43 @@ describe("the shared shell", () => {
     for (const href of ["/setup/people", "/setup/template", "/setup/timer", "/setup/health"]) expect(html).toContain(`href="${href}"`);
     noScriptNoStyle(html);
   });
+
+  const sections = (html: string) => [...html.matchAll(/<div class="menu-header">([^<]+)<\/div>/g)].map((m) => m[1]);
+  const navOf = (html: string) => /<nav class="nav-menu"[\s\S]*?<\/nav>/.exec(html)![0];
+
+  it("the sidebar sections are the same on /app and /setup pages", () => {
+    const setup = appLayout("setup", "/setup/indexing", "Indexing", "");
+    const app = fillChrome(appLayout("app", "/app", "Home", ""), { email: "a@b.co", role: "administrator", isAdmin: true });
+    expect(sections(setup)).toEqual(["Knowledge", "Review", "Engine"]);
+    expect(sections(app)).toEqual(sections(setup));
+    for (const href of ["/app", "/app/knowledge", "/app/pages", "/app/reviews", "/app/flagged"]) expect(navOf(setup)).toContain(`href="${href}"`);
+  });
+
+  it("Engine has Indexing and Settings; Settings expands (details/summary, no script) to the setup screens", () => {
+    const html = appLayout("setup", "/setup/timer", "Timer", "");
+    const engine = html.slice(html.indexOf('<div class="menu-header">Engine</div>'));
+    expect(engine).toMatch(/^<div class="menu-header">Engine<\/div><a class="nav-item" href="\/setup\/indexing">/);
+    expect(engine).toMatch(/<details class="nav-sub" open><summary class="nav-item">.*<span>Settings<\/span><\/summary>/s);
+    const labels = [...engine.matchAll(/class="nav-item nav-subitem[^"]*" href="([^"]+)"[^>]*>.*?<span>([^<]+)<\/span>/g)].map((m) => [m[1], m[2]]);
+    expect(labels).toEqual([
+      ["/setup", "Sign-in"], ["/setup/database", "Database"], ["/setup/people", "Topics and people"], ["/setup/template", "Template"],
+      ["/setup/model", "Model key"], ["/setup/timer", "Timer"], ["/setup/backup", "Backup"], ["/setup/health", "Health"],
+    ]);
+    expect(engine).toMatch(/href="\/setup\/timer" aria-current="page"/);
+    noScriptNoStyle(html);
+  });
+
+  it("clicking Indexing keeps the same menu, Indexing marked, Settings closed", () => {
+    const html = appLayout("setup", "/setup/indexing", "Indexing", "");
+    expect(html).toMatch(/<a class="nav-item active" href="\/setup\/indexing" aria-current="page">/);
+    expect(html).toMatch(/<details class="nav-sub"><summary/);
+    expect(sections(html)).toEqual(["Knowledge", "Review", "Engine"]);
+  });
+
+  it("a reader on /app gets no Engine section", () => {
+    const html = fillChrome(appLayout("app", "/app", "Home", ""), { email: "r@b.co", role: "reader", isAdmin: false });
+    expect(sections(html)).toEqual(["Knowledge", "Review"]);
+  });
 });
 
 describe("Cloudflare email obfuscation is switched off", () => {
@@ -58,7 +96,7 @@ describe("Cloudflare email obfuscation is switched off", () => {
     for (const html of [appLayout("app", "/app", "Home", "<p>pat@example.com</p>"), layout("t", "<p>pat@example.com</p>")]) {
       const on = html.indexOf("<!--email_off-->");
       const off = html.indexOf("<!--/email_off-->");
-      const at = html.indexOf("pat@example.com");
+      const at = html.indexOf("pat<span>&#64;</span>example.com");
       expect(on).toBeGreaterThan(html.indexOf("<body>"));
       expect(on).toBeLessThan(at);
       expect(off).toBeGreaterThan(at);
@@ -67,7 +105,7 @@ describe("Cloudflare email obfuscation is switched off", () => {
 
   it("the closed sign-in page, which shows the admin's email, is covered", () => {
     const html = infoPage({ host: "kb.example.com", level: null, source: "database", reason: "complete", email: "admin@example.com" } as never, "v");
-    expect(html.indexOf("<!--email_off-->")).toBeLessThan(html.indexOf("admin@example.com"));
+    expect(html.indexOf("<!--email_off-->")).toBeLessThan(html.indexOf("admin<span>&#64;</span>example.com"));
   });
 
   it("the closed sign-in page shows both lengths: the sign-in and the connector's approval", () => {

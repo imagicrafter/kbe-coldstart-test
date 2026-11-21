@@ -50,8 +50,11 @@ describe("templates carry what the curator needs", () => {
     }
   });
 
-  it("CRM-like drawers hold new pages for a yes", () => {
-    const held = [...loadTemplates().values()].flatMap((t) => t.drawers).filter((d) => d.curator?.new_page === "needs_yes").map((d) => d.id);
-    expect([...new Set(held)].sort()).toEqual(["deals", "offers", "programs", "properties"]);
+  it("no shipped drawer holds a new page or a field for a yes: the curator applies by default", () => {
+    const drawers = [...loadTemplates().values()].flatMap((t) => t.drawers);
+    expect(drawers.filter((d) => d.curator?.new_page === "needs_yes").map((d) => d.id)).toEqual([]);
+    expect(drawers.filter((d) => d.update_rules.needs_yes.length > 0).map((d) => d.id)).toEqual([]);
+    // Every declared field is automatic.
+    for (const d of drawers) expect([...d.update_rules.auto].sort(), d.id).toEqual(d.fields.map((f) => f.name).sort());
   });
 });

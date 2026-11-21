@@ -26,18 +26,20 @@ describe("curator fan-out: the Northwind email", () => {
     expect(f.store.candidates.mock.calls[0]![1]).toEqual(["pat.rivera@northwind-test.com", "northwind-test.com"]);
   });
 
-  it("creates person, organisation and project, queues the deal, and links them", async () => {
+  it("creates person, organisation, project AND deal, all applied and linked, nothing queued", async () => {
     const f = fakeStore();
     const r = await curateItem(NORTHWIND_EMAIL, deps(modelSaying(NORTHWIND_PLAN), f.store));
 
-    expect(r.outcome).toBe("mixed");
-    expect(r.queued).toBe(1);
-    expect(r.pages).toHaveLength(3);
+    expect(r.outcome).toBe("applied");
+    expect(r.queued).toBe(0);
+    expect(f.reviews).toHaveLength(0);
+    expect(r.pages).toHaveLength(4);
     const byKey = new Map(f.saves.map((s) => [String(s.page["key"]), s.page]));
     for (const e of NORTHWIND_EXPECTED) {
-      if (e.queued) expect(byKey.has(e.key)).toBe(false);
-      else expect(byKey.get(e.key)?.["drawer"]).toBe(e.drawer);
+      expect(e.queued).toBe(false);
+      expect(byKey.get(e.key)?.["drawer"]).toBe(e.drawer);
     }
+    expect([...byKey.values()].map((p) => p["drawer"]).sort()).toEqual(["deals", "organisations", "people", "projects"]);
 
     const person = byKey.get("pat.rivera@northwind-test.com")!;
     expect(person["body"]).toMatch(/## Timeline\n- 2026-11-20: /);
@@ -45,11 +47,7 @@ describe("curator fan-out: the Northwind email", () => {
     expect(byKey.get("northwind-test.com")!["related"]).toContain("pat.rivera@northwind-test.com");
     expect(byKey.get("project:northwind-pilot")!["fields"]).toMatchObject({ organisation: "northwind-test.com", start_date: "2026-12-01" });
 
-    // A new deal waits for a yes (consulting: new_page needs_yes), with stage and value.
-    expect(f.reviews).toHaveLength(1);
-    const review = f.reviews[0]!;
-    expect(review).toMatchObject({ kind: "new_page", pageKey: "deal:northwind-test.com-pilot" });
-    const deal = (review["proposal"] as { page: Record<string, unknown> }).page;
+    const deal = byKey.get("deal:northwind-test.com-pilot")!;
     expect(deal["fields"]).toMatchObject({ stage: "lead", value: 12000, organisation: "northwind-test.com" });
     expect(deal["related"]).toEqual(["pat.rivera@northwind-test.com", "northwind-test.com", "project:northwind-pilot"]);
     // Every page stays in the item's own topics.
@@ -68,7 +66,7 @@ describe("curator fan-out: the Northwind email", () => {
       new_pages: NORTHWIND_PLAN.new_pages.filter((n) => n.drawer !== "people"),
     };
     const r = await curateItem(NORTHWIND_EMAIL, deps(modelSaying(plan), f.store));
-    expect(r.outcome).toBe("mixed");
+    expect(r.outcome).toBe("applied");
     const saved = f.saves.find((s) => s.page["key"] === pat.key)!;
     expect(saved.hash).toBe(pat.content_hash);
     expect(saved.page["related"]).toEqual(["northwind-test.com", "project:northwind-pilot"]);
@@ -98,5 +96,18 @@ describe("curator fan-out: the Northwind email", () => {
     expect(SYSTEM_PROMPT).toMatch(/untrusted/);
     const before = prompt.split("<<<SOURCE_TEXT id=0123456789abcdef>>>")[0]!;
     expect(before).not.toContain("$12,000");
+  });
+
+  it("asks for a deal page when the item names money or a proposal, from the drawer's signals", () => {
+    const prompt = buildPrompt(NORTHWIND_EMAIL, [], schema, "0123456789abcdef");
+    expect(prompt).toMatch(/deals: .*make one when: A request for a price, a proposal or a scope of work/);
+    expect(prompt).toMatch(/budget, price, fee or value/i);
+  });
+
+  it("tells the model to write from the owner's point of view, naming who did what", () => {
+    const prompt = buildPrompt({ ...NORTHWIND_EMAIL, owner_email: "owner@example.com" }, [], schema, "0123456789abcdef");
+    expect(prompt).toContain("The owner of this wiki is owner@example.com");
+    expect(prompt).toMatch(/Pat Rivera emailed/);
+    expect(prompt).toMatch(/never write "Sent/i);
   });
 });

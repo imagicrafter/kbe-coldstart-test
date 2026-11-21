@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { makeOwnerRoutes } from "../../src/app/owner-routes.js";
@@ -34,7 +35,7 @@ describe("the menu: signed-in person and the Knowledge tree", () => {
     const w = world();
     w.fake.state.pinned = true;
     const html = await (await w.http.get("/app", ASSERT.reader)).text();
-    expect(html).toMatch(/class="sidebar-user".*reader@example\.com.*role-reader">reader</s);
+    expect(shown(html)).toMatch(/class="sidebar-user".*reader@example\.com.*role-reader">reader</s);
     expect(html).toMatch(/<details class="tree-root" open><summary>/);
     expect(html).toMatch(/href="\/app\/knowledge\/people">.*People<\/span><span class="count">1234</s);
     expect(html).toContain('href="/app/knowledge/deals"');
@@ -66,7 +67,7 @@ describe("the menu: signed-in person and the Knowledge tree", () => {
 
   it("an email in the menu cannot inject a replacement pattern", () => {
     const html = fillChrome(appLayout("app", "/app", "x", ""), { email: "a$&b@example.com", role: "reader", isAdmin: false });
-    expect(html).toContain("a$&amp;b@example.com");
+    expect(shown(html)).toContain("a$&amp;b@example.com");
   });
 });
 
@@ -193,6 +194,9 @@ describe("one page", () => {
     const saved = w.fake.calls.find((c) => c.fn === "savePage")?.args[1] as Record<string, unknown>;
     expect(saved).toMatchObject({ key: "acme.com", status: "current", tags: ["vip", "north"], related: ["pat@acme.com"], aliases: ["Acme Inc"], fields: { role: "client", last_contact: "2026-11-20" } });
     expect(saved).not.toHaveProperty("stage");
+    // The fields the person changed are marked as hand-set, so the curator asks before overwriting them.
+    const marks = (saved["verified"] as Array<Record<string, unknown>>).filter((v) => v["by"] === "person").map((v) => [v["field"], v["value"]]);
+    expect(marks).toEqual(expect.arrayContaining([["role", "client"], ["last_contact", "2026-11-20"]]));
     const bad = await w.http.post(`/app/pages/${PAGE_ID}`, { ...form, f_role: "emperor" }, ASSERT.reader);
     expect(bad.status).toBe(400);
     expect(await bad.text()).toMatch(/must be one of/);

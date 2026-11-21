@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { _captureLogsForTests } from "../../src/log/logger.js";
 import { GOOD_TOKEN } from "./fake-cloudflare.js";
@@ -97,7 +98,7 @@ describe("POST /setup/preview, asked for JSON", () => {
     const html = await (
       await world.post("/setup/preview", { code: CODE, ...CHOICES })
     ).text();
-    const unescaped = html
+    const unescaped = shown(html)
       .replace(/&gt;/g, ">")
       .replace(/&#39;/g, "'")
       .replace(/&quot;/g, '"')

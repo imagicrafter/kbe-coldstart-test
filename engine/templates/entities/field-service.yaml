@@ -19,8 +19,8 @@ drawers:
     signals:
       - A street address that gets work done at it
     update_rules:
-      auto: [last_visit, next_visit]
-      needs_yes: [organisation, service, frequency]
+      auto: [organisation, service, frequency, last_visit, next_visit]
+      needs_yes: []
     list_views:
       - { name: due, sort: next_visit, desc: false }
 
@@ -36,7 +36,7 @@ drawers:
     signals:
       - Invoices, quotes or orders from a supplier
     update_rules:
-      auto: [last_order]
-      needs_yes: [supplies]
+      auto: [supplies, last_order]
+      needs_yes: []
     list_views:
       - { name: recent, sort: last_order, desc: true }

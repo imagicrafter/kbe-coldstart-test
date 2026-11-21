@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { makeSettingsRoutes } from "../../src/app/settings-routes.js";
@@ -115,7 +116,7 @@ describe("topics and people", () => {
     const fields = { csrf, action: "add", email: "new@example.com", display_name: "New", role: "reader" };
     const preview = await w.http.post("/setup/people/change", fields, ASSERT.owner);
     const html = await preview.text();
-    expect(html).toContain("Add reader@example.com as a reader.");
+    expect(shown(html)).toContain("Add reader@example.com as a reader.");
     expect(html).toContain(`name="confirm_code" value="${"f".repeat(32)}"`);
     const first = w.fake.calls.find((c) => c.fn === "twoStep")?.args[1] as { confirmCode?: string };
     expect(first.confirmCode).toBeUndefined();

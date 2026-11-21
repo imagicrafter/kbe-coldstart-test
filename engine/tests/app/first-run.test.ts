@@ -216,6 +216,14 @@ describe("claiming over HTTP", () => {
     expect((await w.req(`/setup?code=${CODE}`)).status).toBe(409);
   });
 
+  it("the first-run Database screen links the token page and the project", async () => {
+    const w = world();
+    await w.claim();
+    const html = await (await w.req("/setup/database")).text();
+    expect(html).toContain('href="https://supabase.com/dashboard/account/tokens"');
+    expect(html).toContain(`href="https://supabase.com/dashboard/project/${REF}"`);
+  });
+
   it("refuses a wrong code and counts it", async () => {
     const w = world();
     expect((await w.req("/setup?code=nope")).status).toBe(401);

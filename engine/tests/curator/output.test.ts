@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { entitySchema } from "../../src/entities/templates.js";
 import { checkReply, extractJsonObject, fieldProblem, keyProblem } from "../../src/curator/output.js";
-import { judgeNewPage, judgeUpdate } from "../../src/curator/policy.js";
+import { LARGE_REMOVAL_SHARE, judgeNewPage, judgeUpdate, removal } from "../../src/curator/policy.js";
 import { itemKeys, meetingKey } from "../../src/curator/keys.js";
-import { ALL_PAGES, INVOICES, OVENS, PILOT, item } from "./fixtures.js";
+import { ALL_PAGES, INVOICES, OVENS, PILOT, item, page } from "./fixtures.js";
 
 const schema = entitySchema(["consulting"]);
 const ctx = { shortlist: ALL_PAGES, schema, sourceText: item().body };
@@ -100,30 +100,49 @@ describe("field and key rules", () => {
   });
 });
 
-describe("policy: small applies, large waits", () => {
+describe("policy: apply by default, queue only extreme cases", () => {
   const upd = (fields: Record<string, string | number>, text = "2026-11-19: ok") => ({
     key: OVENS.key, patches: [{ op: "append-bullet" as const, section: "Timeline", text }], fields,
   });
+  const handSet = (field: string, value: unknown) => page({ ...OVENS, verified: [{ field, value, by: "person", at: "2026-11-01T00:00:00Z" }] });
 
-  it("applies automatic fields and small text", () => {
+  it("applies field changes, stage and value included, and long additions", () => {
     expect(judgeUpdate(upd({ next_step: "Call Priya" }), OVENS, schema, false)).toEqual({ apply: true });
+    expect(judgeUpdate(upd({ stage: "won" }), OVENS, schema, false)).toEqual({ apply: true });
+    expect(judgeUpdate(upd({ value: 3000 }), OVENS, schema, false)).toEqual({ apply: true });
+    expect(judgeUpdate(upd({}, `2026-11-19: ${"x".repeat(3100)}`), OVENS, schema, false)).toEqual({ apply: true });
   });
 
-  it("queues a stage change, an unlisted field, a large change and a released item", () => {
-    expect(judgeUpdate(upd({ stage: "won" }), OVENS, schema, false)).toEqual({ apply: false, reasons: ["stage change needs a yes"] });
-    expect(judgeUpdate(upd({ value: 3000 }), OVENS, schema, false).apply).toBe(false);
-    expect(judgeUpdate(upd({}, `2026-11-19: ${"x".repeat(3100)}`), OVENS, schema, false)).toEqual({ apply: false, reasons: ["large change"] });
-    expect(judgeUpdate(upd({}), OVENS, schema, true).apply).toBe(false);
+  it("queues anything from an item flagged as possible AI steering", () => {
+    expect(judgeUpdate(upd({}), OVENS, schema, true)).toEqual({ apply: false, reasons: ["item was held by the steering screen"] });
   });
 
-  it("does not count a field set to its current value", () => {
-    expect(judgeUpdate(upd({ stage: "proposal" }), OVENS, schema, false)).toEqual({ apply: true });
+  it("queues a change that overwrites a value a person set by hand", () => {
+    expect(judgeUpdate(upd({ stage: "won" }), handSet("stage", "proposal"), schema, false))
+      .toEqual({ apply: false, reasons: ["stage was set by hand"] });
+    // Setting the hand-set value again, or another field, applies.
+    expect(judgeUpdate(upd({ stage: "proposal" }), handSet("stage", "proposal"), schema, false)).toEqual({ apply: true });
+    expect(judgeUpdate(upd({ next_step: "x" }), handSet("stage", "proposal"), schema, false)).toEqual({ apply: true });
   });
 
-  it("queues a new deal, applies a new meeting page", () => {
+  it("queues a change that replaces a large part of the page", () => {
+    const long = page({ ...OVENS, body: "# T\n\n## Summary\n" + "A".repeat(500) + "\n\n## Timeline\n- 2026-10-02: sent.\n" });
+    const replace = { key: OVENS.key, fields: {}, patches: [{ op: "replace-line" as const, section: "Summary", old: "A".repeat(500), new: "B" }] };
+    expect(judgeUpdate(replace, long, schema, false)).toEqual({ apply: false, reasons: [`would remove ${LARGE_REMOVAL_SHARE * 100}% or more of the page`] });
+    const small = { key: OVENS.key, fields: {}, patches: [{ op: "replace-line" as const, section: "Timeline", old: "- 2026-10-02: sent.", new: "- 2026-10-02: proposal sent." }] };
+    expect(judgeUpdate(small, long, schema, false)).toEqual({ apply: true });
+  });
+
+  it("measures removal: a dropped section counts, appends never do", () => {
+    const before = "# T\n\n## Summary\nOne.\n\n## Notes\n- a\n";
+    expect(removal(before, before + "- b\n")).toEqual({ share: 0, lostSections: [] });
+    expect(removal(before, "# T\n\n## Summary\nOne.\n").lostSections).toEqual(["Notes"]);
+  });
+
+  it("applies every new page, deals and offers included; queues only a released item's", () => {
     const n = (d: string) => ({ drawer: d, key: "x", title: "X", sections: [], fields: {} });
-    expect(judgeNewPage(n("deals"), schema, false)).toEqual({ apply: false, reasons: ["new page in deals"] });
-    expect(judgeNewPage(n("offers"), schema, false).apply).toBe(false);
+    expect(judgeNewPage(n("deals"), schema, false)).toEqual({ apply: true });
+    expect(judgeNewPage(n("offers"), schema, false)).toEqual({ apply: true });
     expect(judgeNewPage(n("meetings"), schema, false)).toEqual({ apply: true });
     expect(judgeNewPage(n("meetings"), schema, true).apply).toBe(false);
   });

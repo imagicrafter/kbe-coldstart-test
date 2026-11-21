@@ -28,7 +28,7 @@ export const NORTHWIND_EXPECTED = [
   { key: PERSON, drawer: "people", queued: false },
   { key: ORG, drawer: "organisations", queued: false },
   { key: PROJECT, drawer: "projects", queued: false },
-  { key: DEAL, drawer: "deals", queued: true },
+  { key: DEAL, drawer: "deals", queued: false },
 ] as const;
 
 export const NORTHWIND_PLAN = {

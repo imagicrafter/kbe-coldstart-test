@@ -268,13 +268,17 @@ For each item not yet curated, oldest first:
    again later (three tries by default): an unknown page or field, a value
    not allowed by the drawer, an undated line, a patch that does not apply,
    text copied from another page, a cut-off reply.
-5. **Apply or queue.** Small changes are saved. A change waits in
-   `curator_reviews` for the owner's yes when it sets a field the drawer
-   marks `needs_yes` (a stage change, a deal value) or does not list as
-   `auto`, adds more than 3,000 characters, comes from a released item, or
-   is a new page in a drawer whose template says
-   `curator: { new_page: needs_yes }` (deals, offers, programs, properties).
-   Approved changes are applied on the next run.
+5. **Apply or queue.** Changes are saved on their own, including new deal,
+   offer, program and property pages and stage or value changes; every save
+   is a version in the page's history, so any of it can be undone there. A
+   change waits in `curator_reviews` for the owner's yes only in extreme
+   cases: it comes from an item the steering screen flagged and a person
+   released; it would remove or replace 40% or more of an existing page's
+   text, or a whole section; or it would overwrite, with a different value,
+   a field a person set by hand in the app's edit form (recorded in the
+   page's `verified` list). A template may still opt a drawer in with
+   `update_rules.needs_yes` or `curator: { new_page: needs_yes }`; the
+   shipped templates do not. Approved changes are applied on the next run.
 6. **Close.** The item is marked curated with the pages it touched. Each
    touched page lists the item in `sources`, so a run cut short and repeated
    never patches a page twice. An older version of an item that has a newer

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { logger } from "../log/logger.js";
+import { projectLink, tokenLinkHint } from "./supabase-links.js";
 import { readForm } from "./guard.js";
 import { adminMigrationState, runDbUpdate, updateBanner, UPDATE_STEPS, type MigrationState } from "./db-update.js";
 import type { StepReport } from "./db-setup.js";
@@ -47,13 +48,14 @@ function stateCard(state: MigrationState): string {
 function form(deps: SettingsDeps, me: Allowed): string {
   const plan = UPDATE_STEPS.map((s) => `<li>${esc(s.title)}</li>`).join("");
   return card(`<h2>Update the database</h2>
-<p>This applies only the pending migrations to your Supabase project <strong>${esc(deps.database?.projectRef ?? "(unknown)")}</strong>, in order, each in its own transaction, then makes the schema reachable again:</p><ol>${plan}</ol>
+<p>This applies only the pending migrations to your Supabase project ${projectLink(deps.database?.projectRef)}, in order, each in its own transaction, then makes the schema reachable again:</p><ol>${plan}</ol>
 <ol>
-<li>In Supabase open <strong>Account</strong>, then <strong>Access Tokens</strong>, then <strong>Generate new token</strong>. Limit it to this project if offered; let it expire tomorrow.</li>
+<li>In Supabase open <a href="https://supabase.com/dashboard/account/tokens" target="_blank" rel="noopener noreferrer">Account, then Access Tokens</a>, then <strong>Generate new token</strong>. Limit it to this project if offered; let it expire tomorrow.</li>
 <li>Paste it below. It is used for this one request and not saved, logged or shown. Delete it in Supabase afterwards.</li>
 </ol>
 ${postForm(HERE, deps.csrf.token(me.email, "database"), `<label for="access_token">Supabase access token</label>
-<input type="password" id="access_token" name="access_token" autocomplete="off" spellcheck="false" required maxlength="512">`, "Update the database")}`);
+<input type="password" id="access_token" name="access_token" autocomplete="off" spellcheck="false" required maxlength="512">
+${tokenLinkHint()}`, "Update the database")}`);
 }
 
 const cannot = card("<p>This app was built without the repository's SQL files, so it cannot update its own database. Run <code>kbe db migrate</code> from the Engine's tooling instead.</p>");

@@ -191,6 +191,9 @@ describe("/setup/database after sign-in", () => {
     expect(html).toContain('name="access_token"');
     expect(html).toContain("Update the database");
     expect(html).not.toMatch(/<script/i);
+    // The token box links to Supabase's token page; the project ID links to the project.
+    expect(html).toContain('href="https://supabase.com/dashboard/account/tokens"');
+    expect(html).toContain(`href="https://supabase.com/dashboard/project/${REF}"`);
   });
 
   it("says up to date when nothing is pending", async () => {

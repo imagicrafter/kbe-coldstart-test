@@ -9,6 +9,25 @@ An entry says so when updating needs more than the steps in
 
 ## Unreleased
 
+### Changed
+
+- **The curator applies by default.** New deal, offer, program and property
+  pages and stage/value changes apply on their own (undoable from page
+  history). A change waits for a yes only when the item was flagged as
+  possible AI steering, when it would remove 40% or more of a page or a
+  whole section, or when it would overwrite a field a person set by hand in
+  the app's edit form. Shipped templates list every field as `auto`.
+- **Curator prompt:** files a deal page when an item names money or asks for
+  a proposal or SOW (drawer signals are now in the prompt), and writes from
+  the owner's point of view, naming who did what.
+- **Addresses show on signed-in pages.** `/app`, `/setup` and `/status`
+  never send a raw `x@y.z`, so the edge's email obfuscation has nothing to
+  rewrite into "[email protected]"; the visible text is still the address.
+- **One sidebar everywhere:** Home, Knowledge, Review, and Engine (Indexing;
+  Settings opens to the setup screens).
+- **Database screens** link to Supabase's access-token page and to the
+  project's dashboard.
+
 ### Added
 
 - **Database update screen** (`/setup/database` after sign-in; migration

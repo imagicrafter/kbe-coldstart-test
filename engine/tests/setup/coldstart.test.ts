@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { describe, it, expect } from "vitest";
 import { GOOD_TOKEN } from "./fake-cloudflare.js";
 import { CODE, createWorld, PLATFORM_HOST, previewed } from "./world.js";
@@ -76,7 +77,7 @@ describe("the apply step's token box", () => {
 describe("the owner on the sign-in form", () => {
   it("shows the stored owner to a claimed session", async () => {
     const world = createWorld({ deps: { sessionCode: () => CODE } });
-    const html = await (await world.get()).text();
+    const html = shown(await (await world.get()).text());
     expect(html).toContain("owner@example.com");
     expect(html).not.toContain("The owner named in your Engine config.");
   });

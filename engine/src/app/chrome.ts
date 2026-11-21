@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import { esc } from "../status/page.js";
 import { drawerIcon, icon } from "./icons.js";
+import { guardEmails } from "./email-guard.js";
+import { engineNavHtml } from "./shell.js";
 import type { Row } from "./store.js";
 
 /**
@@ -88,17 +90,16 @@ export function treeHtml(tree: Tree, here: string | undefined): string {
 }
 
 export function adminNavHtml(here: string | undefined): string {
-  const cur = here === "/setup/indexing";
-  return `<div class="menu-header">Engine</div><a class="nav-item${cur ? " active" : ""}" href="/setup/indexing"${cur ? ' aria-current="page"' : ""}>${icon("database")}<span>Indexing</span></a>`;
+  return engineNavHtml(here ?? "");
 }
 
 /** Fill the shell's markers for this request (empty when nothing is known). */
 export function fillChrome(html: string, ch: Chrome | undefined, here?: string): string {
   const at = here ?? ch?.here;
-  return html
+  return guardEmails(html
     .replace(MARK_USER, () => (ch ? userHtml(ch) : ""))
     .replace(/<!--kbe:tree-->([\s\S]*?)<!--\/kbe:tree-->/, (_m, link: string) => (ch?.tree ? treeHtml(ch.tree, at) : link))
-    .replace(MARK_ADMIN, () => (ch?.isAdmin ? adminNavHtml(at) : ""));
+    .replace(MARK_ADMIN, () => (ch?.isAdmin ? adminNavHtml(at) : "")));
 }
 
 const asLinks = (v: unknown): TreeLink[] =>

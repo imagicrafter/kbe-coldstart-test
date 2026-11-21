@@ -17,6 +17,15 @@ const build = (over: Record<string, unknown> = {}) =>
     NOW,
   );
 
+describe("signed-in email on the dashboard", () => {
+  it("reads as the real address and gives the edge's obfuscator nothing to match", () => {
+    const html = renderPage(build(), "v", "owner@example.com");
+    const foot = /<span>Signed in as [\s\S]*?<\/span>\s*<\/div>/.exec(html)![0];
+    expect(foot).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+    expect(foot.replace(/<[^>]*>/g, "").replace(/&#64;/g, "@")).toContain("Signed in as owner@example.com");
+  });
+});
+
 describe("page shell", () => {
   it("links only same-origin assets and carries no inline script or style", () => {
     const html = renderPage(build(), "abc123", "owner@example.com");

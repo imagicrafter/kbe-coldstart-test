@@ -1,3 +1,4 @@
+import { shown } from "../shown.js";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { _captureLogsForTests, logger } from "../../src/log/logger.js";
 import type { FetchLike } from "../../src/setup/cloudflare-client.js";
@@ -244,7 +245,7 @@ describe("the token and the setup code never leave the request", () => {
     }
     expect(outs.map((o) => o.status)).toEqual([400, 400]);
     // What was valid is given back; the secret is not.
-    expect(outs[0]?.text).toContain("amy@example.com");
+    expect(shown(outs[0]?.text)).toContain("amy@example.com");
     expectNothingLeaked(world, outs);
   });
 });

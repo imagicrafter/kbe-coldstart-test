@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler, Next } from "hono";
+import { projectLink, tokenLinkHint } from "./supabase-links.js";
 import { Hono } from "hono";
 import { logger } from "../log/logger.js";
 import { isEmail } from "../setup/inputs.js";
@@ -215,10 +216,10 @@ function stepsTable(steps: readonly StepReport[]): string {
 
 function databaseForm(deps: FirstRunRouteDeps, cookie: string, values: { ref: string; owner: string }): string {
   const plan = DB_STEPS.map((s) => `<li>${esc(s.title)}</li>`).join("");
-  return card(`<p>The Engine keeps everything in your Supabase project <strong>${esc(deps.projectRef ?? "(unknown)")}</strong>. This screen sets it up for you:</p><ol>${plan}</ol>`) +
+  return card(`<p>The Engine keeps everything in your Supabase project ${projectLink(deps.projectRef)}. This screen sets it up for you:</p><ol>${plan}</ol>`) +
     card(`<h2>Make a Supabase access token</h2>
 <ol>
-<li>In Supabase open <strong>Account</strong>, then <strong>Access Tokens</strong>, then <strong>Generate new token</strong>.</li>
+<li>In Supabase open <a href="https://supabase.com/dashboard/account/tokens" target="_blank" rel="noopener noreferrer">Account, then Access Tokens</a>, then <strong>Generate new token</strong>.</li>
 <li>If Supabase offers it, limit the token to this one project. Set it to expire tomorrow.</li>
 <li>Copy it. It is used for this one request and not saved anywhere. Delete it in Supabase when setup is done.</li>
 </ol>`) +
@@ -231,6 +232,7 @@ ${hidden("csrf", claimFormToken(cookie, "database"))}
 <p class="hint">The 20 letters in your project's address, https://<strong>ref</strong>.supabase.co. It must be the project this app is deployed with.</p>
 <label for="access_token">Supabase access token</label>
 <input type="password" id="access_token" name="access_token" autocomplete="off" spellcheck="false" required maxlength="512">
+${tokenLinkHint()}
 <p><button type="submit">Set up the database</button></p>
 </form>`);
 }

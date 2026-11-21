@@ -1,14 +1,16 @@
 import { esc } from "../status/page.js";
 import { setupAssetVersion } from "../setup/assets.js";
 import { icon, type IconName } from "./icons.js";
+import { guardEmails } from "./email-guard.js";
 import { MARK_ADMIN, MARK_TREE, MARK_TREE_END, MARK_USER } from "./chrome.js";
 
 /**
  * The one page shell for /app and /setup: a sidebar with icon links and a
  * main column. Server-rendered, no script, no inline style; one same-origin
- * stylesheet. The whole body sits inside Cloudflare's email_off markers so
- * its edge never rewrites an address into "[email protected]" (the decode
- * script it would add is blocked by our CSP).
+ * stylesheet. Addresses are written so the edge's email obfuscation cannot
+ * match them (email-guard.ts); the email_off markers stay as a second line.
+ * The sidebar is the same everywhere: Home, Knowledge, Review, and Engine
+ * (Indexing, Settings > setup screens) for administrators and on /setup.
  */
 
 export const PRODUCT_NAME = "Knowledge Base Engine";
@@ -22,17 +24,19 @@ export type NavItem = {
   readonly group?: string;
 };
 
+/** The setup screens: the sub-items of Engine > Settings. */
 export const SETUP_NAV: readonly NavItem[] = [
-  { href: "/setup", label: "Sign-in", icon: "lock", group: "Setup" },
-  { href: "/setup/people", label: "Topics and people", icon: "users", group: "Setup" },
-  { href: "/setup/template", label: "Template", icon: "template", group: "Setup" },
-  { href: "/setup/model", label: "Model key", icon: "key", group: "Setup" },
-  { href: "/setup/timer", label: "Timer", icon: "clock", group: "Setup" },
-  { href: "/setup/backup", label: "Backup", icon: "archive", group: "Setup" },
-  { href: "/setup/database", label: "Database", icon: "database", group: "Setup" },
-  { href: "/setup/health", label: "Health", icon: "heart", group: "Setup" },
-  { href: "/setup/indexing", label: "Indexing", icon: "database", group: "Engine" },
+  { href: "/setup", label: "Sign-in", icon: "lock", group: "Settings" },
+  { href: "/setup/database", label: "Database", icon: "database", group: "Settings" },
+  { href: "/setup/people", label: "Topics and people", icon: "users", group: "Settings" },
+  { href: "/setup/template", label: "Template", icon: "template", group: "Settings" },
+  { href: "/setup/model", label: "Model key", icon: "key", group: "Settings" },
+  { href: "/setup/timer", label: "Timer", icon: "clock", group: "Settings" },
+  { href: "/setup/backup", label: "Backup", icon: "archive", group: "Settings" },
+  { href: "/setup/health", label: "Health", icon: "heart", group: "Settings" },
 ];
+
+export const INDEXING_HREF = "/setup/indexing";
 
 export const APP_NAV: readonly NavItem[] = [
   { href: "/app", label: "Home", icon: "home" },
@@ -63,6 +67,23 @@ export function navHtml(items: readonly NavItem[], here: string): string {
   return `<nav class="nav-menu" aria-label="Menu">${parts.join("")}</nav>`;
 }
 
+function navLink(item: NavItem, here: string, extra = ""): string {
+  const current = isHere(item, here);
+  return `<a class="nav-item${extra}${current ? " active" : ""}" href="${esc(item.href)}"${current ? ' aria-current="page"' : ""}>${icon(item.icon)}<span>${esc(item.label)}</span></a>`;
+}
+
+/**
+ * The Engine section, the same on every page that shows it: Indexing, and
+ * Settings, which opens (details/summary, no script) to the setup screens.
+ * Open while one of them is the current screen.
+ */
+export function engineNavHtml(here: string): string {
+  const indexing = navLink({ href: INDEXING_HREF, label: "Indexing", icon: "database" }, here);
+  const inSettings = SETUP_NAV.some((i) => isHere(i, here));
+  const subs = SETUP_NAV.map((i) => navLink(i, here, " nav-subitem")).join("");
+  return `<div class="menu-header">Engine</div>${indexing}<details class="nav-sub"${inSettings ? " open" : ""}><summary class="nav-item">${icon("template")}<span>Settings</span></summary>${subs}</details>`;
+}
+
 /** The setup screens as a card of links: what /setup shows once sign-in is done. */
 export function setupMenu(): string {
   const links = SETUP_NAV.filter((i) => i.href !== "/setup")
@@ -73,9 +94,8 @@ export function setupMenu(): string {
 
 export function shell(area: Area, here: string, title: string, body: string, withNav = true, version: string = setupAssetVersion()): string {
   const css = area === "setup" ? "/setup/assets/setup.css" : "/app/assets/setup.css";
-  const items = area === "setup" ? SETUP_NAV : APP_NAV;
   const sub = area === "setup" ? "Setup" : "Your knowledge";
-  return `<!doctype html>
+  return guardEmails(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -90,8 +110,8 @@ export function shell(area: Area, here: string, title: string, body: string, wit
 <div class="app-shell">
 <aside class="sidebar">
 <a class="brand" href="${area === "setup" ? "/setup" : "/app"}"><span class="logo">${icon("book", 22)}</span><span class="brand-text"><span class="eyebrow">${PRODUCT_NAME}</span><strong>${sub}</strong></span></a>
-${withNav ? navHtml(items, here) : ""}
-${withNav && area === "app" ? MARK_ADMIN : ""}
+${withNav ? navHtml(APP_NAV, here) : ""}
+${withNav ? (area === "setup" ? engineNavHtml(here) : MARK_ADMIN) : ""}
 ${MARK_USER}
 </aside>
 <main class="content">
@@ -104,5 +124,5 @@ ${body}
 <!--/email_off-->
 </body>
 </html>
-`;
+`);
 }
